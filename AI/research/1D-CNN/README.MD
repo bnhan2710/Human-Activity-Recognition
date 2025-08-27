@@ -172,6 +172,7 @@ Mô hình được huấn luyện theo phương pháp có giám sát sử dụng
 
 *Tổng quan*
 
+</div>
 
 ### Tại sao lựa chọn 1D CNNs cho HAR?
 
