@@ -172,6 +172,7 @@ Mô hình được huấn luyện theo phương pháp có giám sát sử dụng
 
 *Tổng quan*
 
+
 </div>
 
 ### Tại sao lựa chọn 1D CNNs cho HAR?
@@ -236,12 +237,10 @@ Mô hình được huấn luyện theo phương pháp có giám sát sử dụng
 >  **Tác giả: Serkan Kiranyaz, Onur Avci, Osama Abdeljaber, Turker Ince, Moncef Gabbouj, Daniel J.Inman
 >  **Link**: [https://arxiv.org/pdf/1905.03554](https://arxiv.org/pdf/1905.03554)  
 >  **Năm xuất bản**: 2019  
->  **Tóm tắt**: Nghiên cứu tổng quan về 1D CNNs và các ứng dụng trong xử lý tín hiệu một chiều, bao gồm phân tích hiệu suất, kiến trúc và so sánh với các phương pháp truyền thống.
-
 
 **Tóm tắt nghiên cứu**
 
-Bài báo này cung cấp một cái nhìn tổng quan về 1D CNNs và các ứng dụng trong xử lý tín hiệu một chiều. Nghiên cứu bao gồm phân tích hiệu suất, thiết kế kiến trúc, và so sánh với các phương pháp machine learning truyền thống.
+Nghiên cứu này cung cấp một cái nhìn tổng quan về 1D CNNs và các ứng dụng trong xử lý tín hiệu một chiều. Nghiên cứu bao gồm phân tích hiệu suất, thiết kế kiến trúc, và so sánh với các phương pháp machine learning truyền thống.
 
 ### Thông tin bổ sung
 
