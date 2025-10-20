@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
-from sklearn.preprocessing import StandardScaler, QuantileTransformer
+from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 import tensorflow as tf
 from tensorflow.keras.utils import to_categorical
@@ -35,7 +35,7 @@ class Preprocessor:
         self.n_features = len(self.sensor_columns)
         
 
-        self.window_size = 100  # 5 seconds at 20Hz
+        self.window_size = 20 
         self.overlap = 0.5   
         self.step_size = int(self.window_size * (1 - self.overlap))
         
@@ -147,8 +147,8 @@ class Preprocessor:
             Q1 = df_clean[col].quantile(0.05)
             Q3 = df_clean[col].quantile(0.95)
             IQR = Q3 - Q1
-            lower_bound = Q1 - 5.0 * IQR
-            upper_bound = Q3 + 5.0 * IQR
+            lower_bound = Q1 - 3.0 * IQR
+            upper_bound = Q3 + 3.0 * IQR
             
             before_count = len(df_clean)
             df_clean = df_clean[(df_clean[col] >= lower_bound) & (df_clean[col] <= upper_bound)]
@@ -246,137 +246,69 @@ class Preprocessor:
         
         return X_windows, y_windows, subject_windows
     
-    def plot_boxplots(self, df, title="Boxplot"):
-        """Vẽ boxplot cho từng sensor và activity"""
-        print(f"\n📊 Plotting boxplots: {title}")
-        fig, axes = plt.subplots(len(self.sensor_columns), len(self.activity_names), figsize=(24, 20))
-        fig.suptitle(title, fontsize=16, fontweight='bold')
-        for i, sensor in enumerate(self.sensor_columns):
-            for j, activity in enumerate(self.activity_names):
-                ax = axes[i, j]
-                data = df[df['activity'] == activity][sensor].dropna()
-                if len(data) > 0:
-                    bp = ax.boxplot([data], patch_artist=True, widths=0.6)
-                    bp['boxes'][0].set_facecolor('lightblue' if 'Raw' in title else 'lightgreen')
-                    bp['boxes'][0].set_alpha(0.7)
-                    ax.set_xticks([])
-                    if i == 0:
-                        ax.set_title(activity, fontsize=10)
-                    if j == 0:
-                        ax.set_ylabel(sensor, fontsize=10)
-                else:
-                    ax.text(0.5, 0.5, 'No data', ha='center', va='center', transform=ax.transAxes)
-                    ax.set_xticks([])
-                    ax.set_yticks([])
-        plt.tight_layout()
-        fname = f"{title.replace(' ', '_').lower()}.png"
-        plt.savefig(fname, dpi=300, bbox_inches='tight')
-        print(f"  💾 Saved: {fname}")
-        plt.close()
-    
-    def prepare_data(self, dataset_paths, test_subject=0, plot_boxplots=True):
+    def prepare_data(self, dataset_paths):
+
         # 1. Load combined datasets
         df = self.load_combined_datasets(dataset_paths)
-
-        # 2. Vẽ boxplot raw data
-        # if plot_boxplots:
-        #     self.plot_boxplots(df, "Raw Data Boxplot")
-
-        # 3. Clean data (remove NaN, outliers)
+        
+        # 2. Clean data
         df_clean = self.clean_data(df)
-
-        # 4. Dùng QuantileTransformer cho outlier robust
-        print("\n📏 Applying QuantileTransformer for outlier handling...")
-        qt = QuantileTransformer(output_distribution='normal', n_quantiles=1000, random_state=42)
-        qt_data = df_clean[self.sensor_columns]
-        qt.fit(qt_data)
-        qt_transformed = qt.transform(qt_data)
-        df_clean[self.sensor_columns] = qt_transformed
-
-        # 5. Vẽ boxplot sau khi xử lý outlier
-        # if plot_boxplots:
-        #     self.plot_boxplots(df_clean, "Processed Data Boxplot")
-
-        # 6. Balance dataset
+        
+        # 3. Balance dataset
         df_balanced = self.balance_dataset(df_clean, method='smart_balance')
-
-        # 7. Create sliding windows
+        
+        # 4. Create sliding windows
         X_windows, y_windows, subject_windows = self.create_sliding_windows(df_balanced)
-
-        # # 8. Chia train/val/test
+        
+        # 5. Split and normalize 
+        print("\n Normalizing features...")
+        scaler = StandardScaler()
+       
         unique_subjects = sorted(list(np.unique(subject_windows)))
-        if test_subject is None or test_subject not in unique_subjects:
-            test_subject = unique_subjects[4]
-        train_subjects = [s for s in unique_subjects if s != test_subject]
-        test_mask = np.isin(subject_windows, [test_subject])
+
+        n_subjects = len(unique_subjects)
+        n_test = max(1, int(n_subjects * 0.15))
+        n_val = max(1, int(n_subjects * 0.15))
+
+        test_subjects = unique_subjects[:n_test]
+        val_subjects = unique_subjects[n_test:n_test + n_val]
+        train_subjects = unique_subjects[n_test + n_val:]
+
         train_mask = np.isin(subject_windows, train_subjects)
-        X_train_val = X_windows[train_mask]
-        y_train_val = y_windows[train_mask]
+        val_mask = np.isin(subject_windows, val_subjects)
+        test_mask = np.isin(subject_windows, test_subjects)
+
+        X_train = X_windows[train_mask]
+        y_train = y_windows[train_mask]
+
+        X_val = X_windows[val_mask]
+        y_val = y_windows[val_mask]
+
         X_test = X_windows[test_mask]
         y_test = y_windows[test_mask]
 
-        # 9. Chuẩn hóa bằng StandardScaler
-        print("\n Normalizing features with StandardScaler...")
         scaler = StandardScaler()
-        X_train_val_reshaped = X_train_val.reshape(-1, self.n_features)
-        scaler.fit(X_train_val_reshaped)
-        X_train_val_scaled = scaler.transform(X_train_val_reshaped).reshape(X_train_val.shape)
-        X_test_scaled = scaler.transform(X_test.reshape(-1, self.n_features)).reshape(X_test.shape)
 
-        # 10. Split train/val
-        X_train, X_val, y_train, y_val = train_test_split(
-            X_train_val_scaled, y_train_val, 
-            test_size=0.2,
-            random_state=42,
-            stratify=y_train_val
-        )
+        X_train_reshaped = X_train.reshape(-1, self.n_features)
+        X_train_normalized = scaler.fit_transform(X_train_reshaped)
+        X_train = X_train_normalized.reshape(X_train.shape)
 
-        # 8. Chia train/val/test theo subject (Cách tối ưu)
-        # unique_subjects = sorted(list(np.unique(subject_windows)))
+        X_val_reshaped = X_val.reshape(-1, self.n_features)
+        X_val_normalized = scaler.transform(X_val_reshaped) 
+        X_val = X_val_normalized.reshape(X_val.shape)
 
-        # # Chọn 1 subject cho TEST
-        # test_subject = unique_subjects[4] # Ví dụ: Subject 5
+        X_test_reshaped = X_test.reshape(-1, self.n_features)
+        X_test_normalized = scaler.transform(X_test_reshaped)  
+        X_test = X_test_normalized.reshape(X_test.shape)
         
-        # # Chọn 1 subject khác cho VALIDATION
-        # val_subject = unique_subjects[2]  # Ví dụ: Subject 4
-
-        # # Các subject còn lại cho TRAIN
-        # train_subjects = [s for s in unique_subjects if s not in [test_subject, val_subject]]
-
-        # # Tạo các mask
-        # test_mask = np.isin(subject_windows, [test_subject])
-        # val_mask = np.isin(subject_windows, [val_subject])
-        # train_mask = np.isin(subject_windows, train_subjects)
-
-        # # Chia dữ liệu thô
-        # X_train = X_windows[train_mask]
-        # y_train = y_windows[train_mask]
-        # X_val = X_windows[val_mask]
-        # y_val = y_windows[val_mask]
-        # X_test = X_windows[test_mask]
-        # y_test = y_windows[test_mask]
-
-        # # 9. Chuẩn hóa bằng StandardScaler
-        # print("\n Normalizing features with StandardScaler...")
-        # scaler = StandardScaler()
-        
-        # # CHỈ FIT TRÊN X_train
-        # X_train_reshaped = X_train.reshape(-1, self.n_features)
-        # scaler.fit(X_train_reshaped)
-        
-        # # TRANSFORM cả ba set
-        # X_train = scaler.transform(X_train_reshaped).reshape(X_train.shape)
-        # X_val = scaler.transform(X_val.reshape(-1, self.n_features)).reshape(X_val.shape)
-        # X_test = scaler.transform(X_test.reshape(-1, self.n_features)).reshape(X_test.shape)
-
         print(f"   Data split summary:")
         print(f"    Training subjects: {', '.join(train_subjects)}")
-        print(f"    Test subject: {test_subject}")
-        print(f"    Validation subject: {val_subject}")
+        print(f"    Validation subjects: {', '.join(val_subjects)}")
+        print(f"    Testing subjects: {', '.join(test_subjects)}")
         print(f"    Training windows: {len(X_train)}")
         print(f"    Validation windows: {len(X_val)}")
         print(f"    Testing windows: {len(X_test)}")
-
+        
         # Save preprocessing info
         preprocessing_info = {
             'scaler_mean': scaler.mean_.tolist(),
@@ -387,42 +319,15 @@ class Preprocessor:
             'n_classes': self.n_classes,
             'activities': {v-1: k for k, v in self.activities.items()},
             'sensor_columns': self.sensor_columns,
-            'test_subject': test_subject
+            'train_subjects': train_subjects,
+            'val_subjects': val_subjects,
         }
+        
         with open('combined_preprocessing_info.json', 'w') as f:
             json.dump(preprocessing_info, f, indent=4)
         print("\n Preprocessing info saved to combined_preprocessing_info.json")
-
+        
         return X_train, X_val, X_test, y_train, y_val, y_test, scaler
-
-
-def extract_enhanced_features(self, window_data):
-    """Thêm features quan trọng cho ĐỨNG/NGỒI và LÊN/XUỐNG"""
-    acc_x = window_data[:, 0]
-    acc_y = window_data[:, 1] 
-    acc_z = window_data[:, 2]
-    
-    # Feature 1: Gravity angle (cho ĐỨNG vs NGỒI)
-    angle_yz = np.arctan2(np.mean(acc_z), np.mean(acc_y))
-    
-    # Feature 2: Variance (static vs dynamic)
-    variance = np.var(acc_x) + np.var(acc_y) + np.var(acc_z)
-    
-    # Feature 3: Vertical acc moving average (cho LÊN vs XUỐNG)
-    acc_z_ma = np.convolve(acc_z, np.ones(3)/3, mode='same')
-    
-    # Feature 4: Rate of change
-    acc_z_diff = np.diff(acc_z, prepend=acc_z[0])
-    
-    # Thêm vào window
-    enhanced = np.column_stack([
-        window_data,
-        np.full(len(window_data), angle_yz),
-        np.full(len(window_data), variance),
-        acc_z_ma,
-        acc_z_diff
-    ])
-    return enhanced
 
 def main():
     
@@ -433,8 +338,7 @@ def main():
         'BINH': os.path.join(base_path, 'BINH'),
         'CUONG': os.path.join(base_path, 'CUONG'),
         'NHAN': os.path.join(base_path, 'NHAN'),
-        'BACH': os.path.join(base_path, 'BACH'),
-        'PHONG': os.path.join(base_path, 'PHONG')
+        'BACH': os.path.join(base_path, 'BACH')
     }
     
     X_train, X_val, X_test, y_train, y_val, y_test, scaler = loader.prepare_data(dataset_paths)
