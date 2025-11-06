@@ -166,60 +166,77 @@ class Preprocessor:
         return X_windows, y_windows, subject_windows
     
     def prepare_data(self, dataset_paths, feature_extraction=False, test_subject_name=None, val_subject_name=None):
+        # 1️⃣ Load toàn bộ dữ liệu
         df = self.load_combined_datasets(dataset_paths)
-        df_clean = self.clean_data(df)
-        df_balanced = self.balance_dataset(df_clean, method='smart_balance')
-        # feature_extraction=False cho Cách 1 (CNN-GRU/Time Series)
-        X_windows, y_windows, subject_windows = self.create_sliding_windows(df_balanced, feature_extraction=False)
-
-        unique_subjects = sorted(list(np.unique(subject_windows)))
-        if test_subject_name is None or val_subject_name is None or test_subject_name not in unique_subjects or val_subject_name not in unique_subjects or test_subject_name == val_subject_name:
+        
+        # 2️⃣ Lấy danh sách subject (dataset_name = subject)
+        unique_subjects = sorted(list(df['dataset'].unique()))
+        if test_subject_name not in unique_subjects or val_subject_name not in unique_subjects or test_subject_name == val_subject_name:
             raise ValueError("Invalid subject split configuration.")
-            
+        
+        train_subjects = [s for s in unique_subjects if s not in [test_subject_name, val_subject_name]]
         test_subject = test_subject_name
         val_subject = val_subject_name
-        train_subjects = [s for s in unique_subjects if s not in [test_subject, val_subject]]
 
-        test_mask = np.isin(subject_windows, [test_subject])
-        val_mask = np.isin(subject_windows, [val_subject])
-        train_mask = np.isin(subject_windows, train_subjects)
+        # 3️⃣ Chia dữ liệu theo subject
+        df_train = df[df['dataset'].isin(train_subjects)]
+        df_val   = df[df['dataset'] == val_subject]
+        df_test  = df[df['dataset'] == test_subject]
 
-        X_train = X_windows[train_mask]; y_train = y_windows[train_mask]
-        X_val = X_windows[val_mask]; y_val = y_windows[val_mask]
-        X_test = X_windows[test_mask]; y_test = y_windows[test_mask]
+        print(f"\n📂 Subjects split:")
+        print(f"  Train: {train_subjects}")
+        print(f"  Val:   {val_subject}")
+        print(f"  Test:  {test_subject}")
 
+        # 4️⃣ Làm sạch dữ liệu (cleaning)
+        df_train = self.clean_data(df_train)
+        df_val   = self.clean_data(df_val)
+        df_test  = self.clean_data(df_test)
+
+        # 5️⃣ Cân bằng dữ liệu — chỉ áp dụng trên train
+        df_train = self.balance_dataset(df_train)
+
+        # 6️⃣ Tạo sliding windows cho từng tập
+        print("\n🪟 Creating sliding windows...")
+        X_train, y_train, _ = self.create_sliding_windows(df_train, feature_extraction)
+        X_val,   y_val,   _ = self.create_sliding_windows(df_val,   feature_extraction)
+        X_test,  y_test,  _ = self.create_sliding_windows(df_test,  feature_extraction)
+
+        # 7️⃣ Tách feature gốc và đạo hàm
         X_train_raw_9 = X_train[:, :, :self.n_features_raw]
-        X_val_raw_9 = X_val[:, :, :self.n_features_raw]
-        X_test_raw_9 = X_test[:, :, :self.n_features_raw]
+        X_val_raw_9   = X_val[:, :, :self.n_features_raw]
+        X_test_raw_9  = X_test[:, :, :self.n_features_raw]
 
         X_train_deriv_2 = X_train[:, :, self.n_features_raw:]
-        X_val_deriv_2 = X_val[:, :, self.n_features_raw:]
-        X_test_deriv_2 = X_test[:, :, self.n_features_raw:]
+        X_val_deriv_2   = X_val[:, :, self.n_features_raw:]
+        X_test_deriv_2  = X_test[:, :, self.n_features_raw:]
 
-        # Chuẩn hóa Quantile (Tăng tính vững vàng với phân phối không chuẩn)
-        print("\n📏 Applying QuantileTransformer (9 original features)...")
+        # 8️⃣ QuantileTransformer (fit chỉ trên train)
+        print("\n📏 Applying QuantileTransformer (fit on train only)...")
         qt = QuantileTransformer(output_distribution='normal', n_quantiles=1000, random_state=42)
-        X_train_qt_reshaped = X_train_raw_9.reshape(-1, X_train_raw_9.shape[-1])
-        qt.fit(X_train_qt_reshaped) 
-        
-        X_train_raw_9 = qt.transform(X_train_qt_reshaped).reshape(X_train_raw_9.shape)
-        X_val_raw_9 = qt.transform(X_val_raw_9.reshape(-1, X_val_raw_9.shape[-1])).reshape(X_val_raw_9.shape)
-        X_test_raw_9 = qt.transform(X_test_raw_9.reshape(-1, X_test_raw_9.shape[-1])).reshape(X_test_raw_9.shape)
+        qt.fit(X_train_raw_9.reshape(-1, X_train_raw_9.shape[-1]))
 
+        X_train_raw_9 = qt.transform(X_train_raw_9.reshape(-1, X_train_raw_9.shape[-1])).reshape(X_train_raw_9.shape)
+        X_val_raw_9   = qt.transform(X_val_raw_9.reshape(-1, X_val_raw_9.shape[-1])).reshape(X_val_raw_9.shape)
+        X_test_raw_9  = qt.transform(X_test_raw_9.reshape(-1, X_test_raw_9.shape[-1])).reshape(X_test_raw_9.shape)
+
+        # 9️⃣ Kết hợp lại 11 features
         X_train_combined = np.concatenate([X_train_raw_9, X_train_deriv_2], axis=2)
-        X_val_combined = np.concatenate([X_val_raw_9, X_val_deriv_2], axis=2)
-        X_test_combined = np.concatenate([X_test_raw_9, X_test_deriv_2], axis=2)
+        X_val_combined   = np.concatenate([X_val_raw_9,   X_val_deriv_2],   axis=2)
+        X_test_combined  = np.concatenate([X_test_raw_9,  X_test_deriv_2],  axis=2)
 
-        # Chuẩn hóa StandardScaler (Giảm sự khác biệt về biên độ)
-        print("\n Normalizing features with StandardScaler (11 features)...")
+        # 🔟 StandardScaler (fit chỉ trên train)
+        print("\n⚙️ Normalizing features with StandardScaler (fit on train only)...")
         scaler = StandardScaler()
-        X_train_reshaped = X_train_combined.reshape(-1, self.n_features) 
-        scaler.fit(X_train_reshaped)
-        
-        X_train = scaler.transform(X_train_reshaped).reshape(X_train_combined.shape)
-        X_val = scaler.transform(X_val_combined.reshape(-1, self.n_features)).reshape(X_val_combined.shape)
-        X_test = scaler.transform(X_test_combined.reshape(-1, self.n_features)).reshape(X_test_combined.shape)
-        
-        print(f"    Training windows: {len(X_train)} (Shape: {X_train.shape})")
+        scaler.fit(X_train_combined.reshape(-1, self.n_features))
+
+        X_train = scaler.transform(X_train_combined.reshape(-1, self.n_features)).reshape(X_train_combined.shape)
+        X_val   = scaler.transform(X_val_combined.reshape(-1, self.n_features)).reshape(X_val_combined.shape)
+        X_test  = scaler.transform(X_test_combined.reshape(-1, self.n_features)).reshape(X_test_combined.shape)
+
+        print(f"\n✅ Data preparation complete.")
+        print(f"   Train windows: {len(X_train)}")
+        print(f"   Val windows:   {len(X_val)}")
+        print(f"   Test windows:  {len(X_test)}")
 
         return X_train, X_val, X_test, y_train, y_val, y_test, scaler
