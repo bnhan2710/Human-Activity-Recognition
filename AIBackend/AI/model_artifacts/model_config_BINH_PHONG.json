@@ -1,0 +1,66 @@
+{
+  "window_size": 40,
+  "overlap": 0.5,
+  "step_size": 20,
+  "sensor_columns": [
+    "ax_g",
+    "ay_g",
+    "az_g",
+    "gx_dps",
+    "gy_dps",
+    "gz_dps",
+    "amag_g",
+    "pitch_kf",
+    "roll_kf"
+  ],
+  "derivative_columns": [
+    "d_pitch_kf",
+    "d_roll_kf"
+  ],
+  "all_feature_columns": [
+    "ax_g",
+    "ay_g",
+    "az_g",
+    "gx_dps",
+    "gy_dps",
+    "gz_dps",
+    "amag_g",
+    "pitch_kf",
+    "roll_kf",
+    "d_pitch_kf",
+    "d_roll_kf"
+  ],
+  "n_features_raw": 9,
+  "n_features": 11,
+  "n_classes": 6,
+  "activity_names": [
+    "WALKING",
+    "UPSTAIRS",
+    "DOWNSTAIRS",
+    "SITTING",
+    "STANDING",
+    "RUNNING"
+  ],
+  "activities": {
+    "WALKING": 1,
+    "UPSTAIRS": 2,
+    "DOWNSTAIRS": 3,
+    "SITTING": 4,
+    "STANDING": 5,
+    "RUNNING": 6
+  },
+  "test_subjects": [
+    "BINH",
+    "PHONG"
+  ],
+  "val_subject": "HUNG",
+  "train_subjects": [
+    "NHAN",
+    "CUONG",
+    "BACH",
+    "HIEN",
+    "TOAN",
+    "DUY",
+    "QUANG"
+  ]
+}
