@@ -1,4 +1,121 @@
+# Test data
 /test
 dataset
 
+# AI results
 /AI/results
+
+# ==================== Python ====================
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv
+
+# Model files (large binary files)
+*.h5
+*.pkl
+*.pth
+*.onnx
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Python cache
+.pytest_cache/
+.coverage
+htmlcov/
+
+# ==================== Flutter ====================
+# Build outputs
+**/build/
+**/android/build/
+**/ios/build/
+**/windows/build/
+**/linux/build/
+**/macos/build/
+**/web/build/
+
+# Flutter/Dart specific
+**/.dart_tool/
+**/.flutter-plugins
+**/.flutter-plugins-dependencies
+**/.packages
+**/.pub-cache/
+**/.pub/
+**/pubspec.lock
+
+# Generated files
+**/generated_plugin_registrant.dart
+**/*.g.dart
+**/*.freezed.dart
+
+# Android specific
+**/android/.gradle/
+**/android/captures/
+**/android/gradlew
+**/android/gradlew.bat
+**/android/local.properties
+**/android/**/GeneratedPluginRegistrant.java
+**/android/key.properties
+**.jks
+**.keystore
+
+# iOS specific
+**/ios/Flutter/Generated.xcconfig
+**/ios/Flutter/flutter_export_environment.sh
+**/ios/Pods/
+**/ios/.symlinks/
+**/ios/**/GeneratedPluginRegistrant.*
+**/ios/Runner/GeneratedPluginRegistrant.*
+
+# ==================== IDE ====================
+# VS Code
+.vscode/
+*.code-workspace
+
+# IntelliJ / Android Studio
+.idea/
+*.iml
+*.iws
+*.ipr
+.gradle/
+
+# ==================== OS ====================
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Linux
+*~
+
+# ==================== Firebase ====================
+# Service account keys (IMPORTANT!)
+**/serviceAccountKey.json
+**/*-firebase-adminsdk-*.json
+
+# ==================== Environment ====================
+.env
+.env.local
+.env.production
+.env.*.local
+
+# ==================== Logs ====================
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
