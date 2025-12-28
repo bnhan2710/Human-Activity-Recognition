@@ -1,0 +1,30 @@
+{
+  "project_info": {
+    "project_number": "325893434883",
+    "firebase_url": "https://imu-detection-app-default-rtdb.asia-southeast1.firebasedatabase.app",
+    "project_id": "imu-detection-app",
+    "storage_bucket": "imu-detection-app.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:325893434883:android:c279714bb70bb46dd12836",
+        "android_client_info": {
+          "package_name": "com.example.flutter_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCancHOOZLpBlGTZo9SZI8HNS22B71Fu1E"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
