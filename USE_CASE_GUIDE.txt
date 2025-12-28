@@ -1,0 +1,278 @@
+================================================================================
+              HƯỚNG DẪN XEM SƠ ĐỒ USE CASE DIAGRAM
+================================================================================
+
+File USE_CASE_DIAGRAM.puml đã được tạo với định dạng PlantUML.
+
+================================================================================
+                    CÁCH 1: SỬ DỤNG ONLINE EDITOR (NHANH NHẤT)
+================================================================================
+
+1. Truy cập: https://www.plantuml.com/plantuml/uml/
+
+2. Mở file USE_CASE_DIAGRAM.puml bằng text editor
+
+3. Copy toàn bộ nội dung file
+
+4. Paste vào PlantUML Online Editor
+
+5. Sơ đồ sẽ tự động hiển thị bên phải
+
+6. Click "PNG" hoặc "SVG" để download hình ảnh
+
+================================================================================
+                    CÁCH 2: SỬ DỤNG VS CODE EXTENSION
+================================================================================
+
+1. Cài đặt Extension "PlantUML" trong VS Code:
+   - Mở Extensions (Ctrl+Shift+X)
+   - Tìm "PlantUML" (by jebbs)
+   - Click Install
+
+2. Cài đặt Java (nếu chưa có):
+   - Download từ: https://www.java.com/download/
+   - Install và restart VS Code
+
+3. Cài đặt Graphviz (optional, cho diagram phức tạp):
+   - Download từ: https://graphviz.org/download/
+   - Install và thêm vào PATH
+
+4. Mở file USE_CASE_DIAGRAM.puml trong VS Code
+
+5. Xem preview:
+   - Press Alt+D (hoặc)
+   - Right-click → "Preview Current Diagram"
+
+6. Export:
+   - Right-click → "Export Current Diagram"
+   - Chọn format: PNG, SVG, PDF, etc.
+
+================================================================================
+                    CÁCH 3: SỬ DỤNG COMMAND LINE (ADVANCED)
+================================================================================
+
+1. Cài đặt PlantUML JAR:
+   - Download: http://plantuml.com/download
+   - Lưu file plantuml.jar
+
+2. Cài đặt Java JRE/JDK (nếu chưa có)
+
+3. Generate diagram:
+   java -jar plantuml.jar USE_CASE_DIAGRAM.puml
+
+4. File PNG sẽ được tạo: USE_CASE_DIAGRAM.png
+
+================================================================================
+                    CÁCH 4: ONLINE TOOLS (KHÔNG CẦN INSTALL)
+================================================================================
+
+Website hỗ trợ PlantUML:
+
+1. PlantText: https://www.planttext.com/
+2. PlantUML Server: https://www.plantuml.com/plantuml/
+3. Gravizo: http://www.gravizo.com/
+
+Chỉ cần copy-paste code và xem kết quả ngay!
+
+================================================================================
+                    NỘI DUNG SƠ ĐỒ USE CASE
+================================================================================
+
+Sơ đồ bao gồm 4 ACTORS chính:
+
+1. 👤 NGƯỜI DÙNG (User)
+   - Xem hoạt động real-time
+   - Xem lịch sử, thống kê
+   - Xem calo tiêu thụ
+   - Nhận cảnh báo sức khỏe
+   - Quản lý thông báo
+
+2. 🤖 ESP32 (IoT Device)
+   - Đọc cảm biến MPU6050
+   - Áp dụng Kalman Filter
+   - Gửi dữ liệu lên Firebase
+
+3. 🧠 AI BACKEND (FastAPI)
+   - Lắng nghe Firebase
+   - Buffer & preprocess data
+   - Dự đoán bằng CNN-GRU
+   - Lưu kết quả vào Firestore
+
+4. ☁️ FIREBASE
+   - Lưu trữ sensor data
+   - Lưu trữ predictions
+   - Lưu trữ notifications
+   - Đồng bộ real-time
+
+================================================================================
+                    CÁC USE CASE GROUPS
+================================================================================
+
+📊 QUẢN LÝ HOẠT ĐỘNG (4 use cases)
+├── UC1: Xem hoạt động theo thời gian thực
+├── UC2: Xem lịch sử hoạt động
+├── UC3: Chọn ngày xem thống kê
+└── UC4: Xem biểu đồ hoạt động (Pie Chart)
+
+💪 QUẢN LÝ SỨC KHỎE (5 use cases)
+├── UC5: Xem thống kê calo tiêu thụ
+├── UC6: Xem thời lượng vận động
+├── UC7: Nhận cảnh báo ngồi quá lâu
+├── UC8: Xem danh sách thông báo
+└── UC9: Đánh dấu đã đọc thông báo
+
+📡 THU THẬP DỮ LIỆU (3 use cases)
+├── UC10: Đọc cảm biến IMU (MPU6050)
+├── UC11: Gửi dữ liệu lên Firebase
+└── UC12: Áp dụng Kalman Filter
+
+🤖 XỬ LÝ AI/ML (4 use cases)
+├── UC13: Lắng nghe Firebase Realtime DB
+├── UC14: Buffer dữ liệu (40 samples)
+├── UC15: Dự đoán hoạt động (CNN-GRU)
+└── UC16: Lưu kết quả vào Firestore
+
+💾 LƯU TRỮ & ĐỒNG BỘ (4 use cases)
+├── UC17: Lưu trữ sensor data
+├── UC18: Lưu trữ predictions
+├── UC19: Lưu trữ notifications
+└── UC20: Đồng bộ real-time với Flutter
+
+👁️ GIÁM SÁT HOẠT ĐỘNG (3 use cases)
+├── UC21: Theo dõi thời gian ngồi
+├── UC22: Phát hiện ngồi > 1 phút
+└── UC23: Tạo thông báo cảnh báo
+
+================================================================================
+                    MỐI QUAN HỆ
+================================================================================
+
+INCLUDE (<<include>>): Use case phụ thuộc bắt buộc
+- UC1 include UC20: Xem real-time cần đồng bộ Firebase
+- UC15 include UC14: Dự đoán cần buffer trước
+- UC7 include UC21: Cảnh báo cần theo dõi thời gian
+
+EXTEND (<<extend>>): Mở rộng tùy chọn
+- UC3 extend UC2: Chọn ngày là option của xem lịch sử
+- UC9 extend UC8: Đánh dấu đọc là option của xem thông báo
+
+================================================================================
+                    QUICK REFERENCE
+================================================================================
+
+📋 TỔNG SỐ USE CASES: 23
+📋 ACTORS: 4 (User, ESP32, Backend, Firebase)
+📋 PACKAGES: 6 nhóm chức năng
+
+🎯 USE CASES CHÍNH (User-facing):
+- UC1: Xem hoạt động real-time ⭐⭐⭐⭐⭐
+- UC7: Nhận cảnh báo ngồi quá lâu ⭐⭐⭐⭐⭐
+- UC5: Xem thống kê calo ⭐⭐⭐⭐
+- UC4: Xem pie chart ⭐⭐⭐⭐
+
+🔧 USE CASES KỸ THUẬT (Backend):
+- UC15: Dự đoán AI (CNN-GRU) ⭐⭐⭐⭐⭐
+- UC13: Listen Firebase ⭐⭐⭐⭐⭐
+- UC14: Buffer data ⭐⭐⭐⭐
+
+📱 USE CASES IOT:
+- UC10: Đọc cảm biến ⭐⭐⭐⭐⭐
+- UC11: Gửi Firebase ⭐⭐⭐⭐⭐
+
+================================================================================
+                    MÀU SẮC TRONG SƠ ĐỒ
+================================================================================
+
+🔵 Light Blue - Quản lý hoạt động
+🟢 Light Green - Quản lý sức khỏe  
+🟡 Yellow - Thu thập dữ liệu
+🟠 Orange - Xử lý AI/ML
+🔴 Pink - Lưu trữ & đồng bộ
+🟣 Lavender - Giám sát hoạt động
+
+================================================================================
+                    EXPORT OPTIONS
+================================================================================
+
+Khi export, bạn có thể chọn:
+
+1. PNG - Cho documents, presentations
+   - Resolution: High (300 DPI recommended)
+   - Size: Medium
+   - Use: Báo cáo, slide
+
+2. SVG - Cho web, scalable graphics
+   - Vector format
+   - Perfect quality at any size
+   - Use: Website, documentation
+
+3. PDF - Cho print, official documents
+   - High quality
+   - Embeddable
+   - Use: Báo cáo chính thức
+
+4. TXT - Cho ASCII art (optional)
+   - Text-based
+   - Terminal-friendly
+
+================================================================================
+                    TIPS
+================================================================================
+
+💡 TIP 1: Zoom in/out trong VS Code Preview
+   - Ctrl + Mouse Wheel
+   - Hoặc Ctrl + (+/-)
+
+💡 TIP 2: Auto-refresh khi edit
+   - VS Code extension tự động refresh
+   - Không cần compile manual
+
+💡 TIP 3: Share diagram
+   - Upload PNG/SVG lên Google Drive
+   - Share link trong team
+
+💡 TIP 4: Version control
+   - .puml file là plain text
+   - Git-friendly, dễ track changes
+
+💡 TIP 5: Customize
+   - Đổi màu: skinparam backgroundColor
+   - Đổi font: skinparam defaultFontName
+   - Đổi style: !theme
+
+================================================================================
+                    TROUBLESHOOTING
+================================================================================
+
+❌ ERROR: "Java not found"
+   ✅ Cài Java JRE: https://www.java.com/download/
+   ✅ Restart VS Code sau khi install
+
+❌ ERROR: "Graphviz error"
+   ✅ Cài Graphviz: https://graphviz.org/download/
+   ✅ Add to PATH environment variable
+
+❌ ERROR: "Cannot preview"
+   ✅ Check PlantUML extension installed
+   ✅ Try online editor instead
+
+❌ Diagram không đẹp
+   ✅ Adjust layout: left to right, top to bottom
+   ✅ Thay đổi spacing: skinparam nodesep 20
+
+================================================================================
+                    KẾT LUẬN
+================================================================================
+
+✅ File USE_CASE_DIAGRAM.puml đã sẵn sàng
+✅ Chứa 23 use cases chi tiết
+✅ 4 actors (User, ESP32, Backend, Firebase)
+✅ Relationships rõ ràng (include, extend)
+✅ Có notes giải thích
+✅ Màu sắc phân nhóm chức năng
+
+👉 KHUYẾN NGHỊ: Dùng PlantUML Online Editor (Cách 1) để xem nhanh nhất!
+
+Link: https://www.plantuml.com/plantuml/uml/
+
+================================================================================

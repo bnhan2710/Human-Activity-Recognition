@@ -1,0 +1,1446 @@
+================================================================================
+        HỆ THỐNG NHẬN DIỆN HOẠT ĐỘNG NGƯỜI DÙNG (HAR SYSTEM)
+            Human Activity Recognition with IoT and AI
+================================================================================
+
+📅 Ngày tạo: 16/11/2025
+🏢 Project: PBL4 - Human Activity Recognition
+🔧 Version: 1.0.0
+
+================================================================================
+                            MỤC LỤC
+================================================================================
+
+1. TỔNG QUAN HỆ THỐNG
+2. CÔNG NGHỆ SỬ DỤNG
+3. KIẾN TRÚC HỆ THỐNG
+4. CHI TIẾT CÁC THÀNH PHẦN
+5. LUỒNG DỮ LIỆU
+6. CƠ SỞ DỮ LIỆU
+7. API ENDPOINTS
+8. DEPLOYMENT
+
+================================================================================
+                        1. TỔNG QUAN HỆ THỐNG
+================================================================================
+
+Hệ thống nhận diện hoạt động người dùng theo thời gian thực sử dụng:
+- Cảm biến IMU (MPU6050) trên ESP32
+- AI/Machine Learning (CNN-GRU) để phân loại hoạt động
+- Firebase để lưu trữ và đồng bộ dữ liệu
+- Flutter Web App để hiển thị và giám sát
+
+MỤC ĐÍCH:
+- Theo dõi hoạt động vận động của người dùng (đi bộ, chạy, ngồi, đứng, lên/xuống cầu thang)
+- Tính toán calo tiêu thụ
+- Cảnh báo khi ngồi quá lâu (>1 phút)
+- Thống kê lịch sử hoạt động theo ngày
+
+HOẠT ĐỘNG NHẬN DIỆN:
+1. WALKING - Đi bộ
+2. RUNNING - Chạy
+3. SITTING - Ngồi
+4. STANDING - Đứng
+5. UPSTAIRS - Lên cầu thang
+6. DOWNSTAIRS - Xuống cầu thang
+
+================================================================================
+                        2. CÔNG NGHỆ SỬ DỤNG
+================================================================================
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ A. PHẦN CỨNG (HARDWARE)                                                     │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+1. ESP32 DevKit
+   - Vi điều khiển: ESP32-WROOM-32
+   - WiFi: 802.11 b/g/n
+   - Bluetooth: BLE 4.2
+   - CPU: Dual-core Xtensa 32-bit LX6
+   - RAM: 520KB SRAM
+   - Flash: 4MB
+   - Ngôn ngữ: C/C++ (Arduino Framework)
+
+2. MPU6050 (6-Axis IMU)
+   - Accelerometer: ±2g, ±4g, ±8g, ±16g
+   - Gyroscope: ±250, ±500, ±1000, ±2000 °/s
+   - Interface: I2C
+   - Sampling Rate: 20Hz (50ms interval)
+   - Kalman Filter: Để làm mịn dữ liệu pitch/roll
+
+SENSORS OUTPUT:
+- ax_g, ay_g, az_g: Gia tốc 3 trục (g)
+- gx_dps, gy_dps, gz_dps: Vận tốc góc 3 trục (độ/giây)
+- amag_g: Độ lớn gia tốc tổng hợp
+- pitch_kf, roll_kf: Góc pitch/roll sau Kalman filter
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ B. BACKEND - AI/ML ENGINE                                                   │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+1. Python 3.13
+   - Framework chính cho AI/ML
+   
+2. FastAPI (Web Framework)
+   - Version: Latest
+   - Vai trò: REST API server
+   - Port: 8000
+   - Features:
+     + Auto-documentation (Swagger UI)
+     + Async support
+     + Pydantic validation
+     + CORS middleware
+
+3. TensorFlow/Keras (Deep Learning)
+   - Model: CNN-GRU Hybrid
+   - Input: Window of 40 samples (2 seconds @ 20Hz)
+   - Features: 9 channels (ax, ay, az, gx, gy, gz, amag, pitch, roll)
+   - Output: 6 activity classes
+   - Model files:
+     + final_model_test_BINH_PHONG.h5 (best model)
+     + model_artifacts/ (scalers, metadata)
+
+4. NumPy & Pandas
+   - Xử lý dữ liệu số
+   - Preprocessing
+   - Feature engineering
+
+5. Firebase Admin SDK
+   - firebase-admin: Python library
+   - Kết nối với Firebase Realtime Database
+   - Kết nối với Firestore
+   - Authentication với Service Account
+
+PACKAGES:
+- fastapi
+- uvicorn[standard]
+- tensorflow
+- numpy
+- pandas
+- firebase-admin
+- python-dotenv
+- pydantic
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ C. FIREBASE (BACKEND-AS-A-SERVICE)                                          │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+1. Firebase Realtime Database
+   - Vai trò: Nhận dữ liệu real-time từ ESP32
+   - Path: /sensor_data
+   - Structure:
+     {
+       "ax_g": -0.02,
+       "ay_g": 0.98,
+       "az_g": 0.15,
+       "gx_dps": 1.2,
+       "gy_dps": -0.5,
+       "gz_dps": 0.3,
+       "amag_g": 1.01,
+       "pitch_kf": 5.2,
+       "roll_kf": 2.8,
+       "timestamp": 1699876543210
+     }
+   - Update frequency: 2 samples/second (500ms)
+
+2. Cloud Firestore
+   - Vai trò: Lưu trữ kết quả dự đoán và thông báo
+   - Collections:
+     
+     a) activity_predictions
+        {
+          "activity": "SITTING",
+          "confidence": 0.95,
+          "probabilities": {
+            "SITTING": 0.95,
+            "STANDING": 0.03,
+            "WALKING": 0.01,
+            ...
+          },
+          "user_id": "user1",
+          "start_time": "2024-11-15T10:30:43.000",
+          "end_time": "2024-11-15T10:30:45.000",
+          "duration_seconds": 2.0,
+          "created_at": "2024-11-15T10:30:45.123",
+          "timestamp": ServerTimestamp
+        }
+     
+     b) notifications
+        {
+          "user_id": "user1",
+          "title": "Cảnh báo: Ngồi quá lâu!",
+          "message": "Bạn đã ngồi hơn 1 phút...",
+          "type": "sitting_alert",
+          "duration_minutes": 1,
+          "is_read": false,
+          "created_at": Timestamp,
+          "timestamp": "2024-11-15T10:35:20.000Z"
+        }
+
+3. Firebase Authentication (Optional)
+   - Đang dùng user_id cố định: "user1"
+   - Có thể mở rộng để hỗ trợ multi-user
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ D. FRONTEND - FLUTTER WEB APP                                               │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+1. Flutter Framework
+   - Version: Latest stable
+   - Platform: Web (Chrome)
+   - Ngôn ngữ: Dart
+   - Port: http://localhost:57768
+
+2. Dart Language
+   - Version: Latest
+   - Compile target: JavaScript (for web)
+
+3. Key Flutter Packages:
+   
+   a) firebase_core: ^3.8.1
+      - Khởi tạo Firebase
+   
+   b) cloud_firestore: ^5.6.0
+      - Kết nối với Firestore
+      - Real-time snapshots
+   
+   c) firebase_auth: ^5.3.3
+      - Authentication (nếu cần)
+   
+   d) fl_chart: ^0.65.0
+      - Vẽ biểu đồ (bar chart, pie chart)
+   
+   e) intl: ^0.20.2
+      - Format ngày tháng
+      - Localization (vi_VN)
+   
+   f) flutter_localizations
+      - Hỗ trợ tiếng Việt
+
+4. State Management
+   - StatefulWidget
+   - StreamBuilder (cho real-time updates)
+   - Singleton Service (ActivityMonitorService)
+
+5. UI Components:
+   - Material Design
+   - Custom cards, charts
+   - Date picker (Vietnamese)
+   - Alert dialogs
+   - SnackBars
+
+================================================================================
+                        3. KIẾN TRÚC HỆ THỐNG
+================================================================================
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           SYSTEM ARCHITECTURE                               │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+                    ┌─────────────────────────┐
+                    │   ESP32 + MPU6050      │
+                    │   (IoT Device)          │
+                    │   - Read sensors @20Hz  │
+                    │   - Send to Firebase    │
+                    └───────────┬─────────────┘
+                                │ WiFi
+                                │ 2 samples/sec
+                                ▼
+                    ┌─────────────────────────┐
+                    │  Firebase Realtime DB   │
+                    │  /sensor_data           │
+                    │  - Store raw data       │
+                    └───────────┬─────────────┘
+                                │ Listener
+                                │ Real-time stream
+                                ▼
+                    ┌─────────────────────────┐
+                    │   FastAPI Backend       │
+                    │   (AI Engine)           │
+                    │   - Buffer 40 samples   │
+                    │   - CNN-GRU prediction  │
+                    │   - Save to Firestore   │
+                    └───────────┬─────────────┘
+                                │ Write
+                                │ Predictions
+                                ▼
+                    ┌─────────────────────────┐
+                    │   Cloud Firestore       │
+                    │   - activity_predictions│
+                    │   - notifications       │
+                    └───────────┬─────────────┘
+                                │ Real-time
+                                │ Snapshots
+                                ▼
+                    ┌─────────────────────────┐
+                    │   Flutter Web App       │
+                    │   (User Interface)      │
+                    │   - Home (live activity)│
+                    │   - Calo (statistics)   │
+                    │   - History (pie chart) │
+                    │   - Notifications       │
+                    └─────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                        DATA FLOW DIAGRAM                                    │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+[ESP32] 
+   │
+   │ 1. Read MPU6050 every 50ms (20Hz)
+   │    - 9 sensor values
+   │    - Kalman filter
+   │
+   ▼
+[Firebase Realtime DB]
+   │
+   │ 2. Store at /sensor_data
+   │    - 2 samples/sec (500ms)
+   │
+   ▼
+[FastAPI Backend]
+   │
+   │ 3. Listen & Buffer
+   │    - Collect 40 samples (2 sec window)
+   │    - Overlap: 50%
+   │
+   │ 4. Preprocessing
+   │    - Normalize with StandardScaler
+   │    - Feature engineering
+   │
+   │ 5. AI Prediction
+   │    - CNN-GRU model
+   │    - Output: activity + confidence
+   │
+   │ 6. Save to Firestore
+   │    - activity_predictions
+   │    - Include time info
+   │
+   ▼
+[Cloud Firestore]
+   │
+   │ 7. Real-time Sync
+   │    - Flutter listens via snapshots()
+   │
+   ▼
+[Flutter Web App]
+   │
+   │ 8. Display & Monitor
+   │    - Home: Live activity
+   │    - ActivityMonitorService: Detect sitting >1min
+   │    - Save notification
+   │
+   │ 9. Show Notifications
+   │    - Alert dialog
+   │    - SnackBar
+   │    - Notifications screen
+   │
+   │ 10. Statistics
+   │    - Calo screen: calories, duration
+   │    - History: pie chart by day
+
+================================================================================
+                    4. CHI TIẾT CÁC THÀNH PHẦN
+================================================================================
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ A. ESP32 FIRMWARE (IoT Layer)                                               │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+CHỨC NĂNG:
+- Đọc dữ liệu từ MPU6050 qua I2C
+- Áp dụng Kalman filter cho pitch/roll
+- Gửi dữ liệu lên Firebase Realtime DB qua WiFi
+- Tần suất: 20Hz (đọc), 2Hz (gửi)
+
+CODE STRUCTURE:
+├── WiFi Connection
+├── Firebase Connection
+├── MPU6050 Initialization
+├── Kalman Filter Implementation
+├── Main Loop:
+│   ├── Read sensors
+│   ├── Apply Kalman filter
+│   └── Send to Firebase (every 500ms)
+
+KẾT NỐI:
+- I2C: SDA, SCL → MPU6050
+- WiFi: SSID, Password → Router → Internet → Firebase
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ B. FASTAPI BACKEND (AI/ML Layer)                                            │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+FILE STRUCTURE:
+c:\PBL4\AIBackend\
+├── backend/
+│   ├── main.py              # FastAPI application
+│   ├── predictor.py         # AI prediction logic
+│   ├── firebase_handler.py  # Firebase operations
+│   ├── data_buffer.py       # Sliding window buffer
+│   ├── .env                 # Environment variables
+│   └── requirements.txt
+│
+├── AI/
+│   ├── final_model_test_BINH_PHONG.h5  # Best CNN-GRU model
+│   ├── model_artifacts/                # Scalers, metadata
+│   └── main_train.py                   # Training code
+
+MAIN.PY - API Endpoints:
+
+1. GET /
+   - Root endpoint, API info
+
+2. GET /health
+   - Health check
+   - Returns: model status, Firebase connection
+
+3. POST /predict/single
+   - Single sensor prediction
+   - Requires buffering
+
+4. POST /predict/batch
+   - Batch prediction (≥40 samples)
+
+5. POST /firebase/start
+   - Start Firebase listener
+   - Listen to /sensor_data
+   - Auto-predict and save
+
+6. POST /firebase/stop
+   - Stop Firebase listener
+
+7. GET /firestore/predictions?user_id=user1&limit=10
+   - Get predictions from Firestore
+
+8. GET /stream/status
+   - Get streaming status
+
+PREDICTOR.PY - AI Logic:
+
+class ActivityPredictor:
+    - __init__(model_path, artifacts_path)
+    - load_model() → Load H5 model
+    - load_artifacts() → Load scalers
+    - preprocess(data) → Normalize, feature engineering
+    - predict_window(window) → CNN-GRU prediction
+    - predict_from_dataframe(df) → Batch prediction
+
+MODEL ARCHITECTURE:
+Input: (40, 9) - 40 timesteps, 9 features
+├── Conv1D(64) + BatchNorm + ReLU + Dropout(0.3)
+├── Conv1D(128) + BatchNorm + ReLU + Dropout(0.3)
+├── GlobalMaxPooling1D
+├── Bidirectional GRU(64) + Dropout(0.3)
+├── Dense(32) + BatchNorm + ReLU + Dropout(0.3)
+└── Dense(6, softmax) → Output probabilities
+
+FIREBASE_HANDLER.PY - Firebase Operations:
+
+class FirebaseHandler:
+    - __init__(database_url, service_account_path)
+    - connect() → Initialize Firebase Admin
+    - start_listening(callback, path) → Listen to Realtime DB
+    - save_prediction_to_firestore() → Save predictions
+    - get_predictions_from_firestore() → Query predictions
+    - save_notification_to_firestore() → Save notifications
+
+DATA_BUFFER.PY - Sliding Window:
+
+class DataBuffer:
+    - window_size: 40 samples
+    - overlap: 50% (20 samples)
+    - add_sample(data) → Add to buffer
+    - can_predict() → Check if buffer full
+    - get_window() → Extract window for prediction
+
+LUỒNG XỬ LÝ:
+1. Firebase listener nhận dữ liệu mới
+2. handle_firebase_data() được gọi
+3. Thêm vào DataBuffer
+4. Nếu đủ 40 samples:
+   - Tính start_time, end_time, duration
+   - Extract window
+   - Preprocessing
+   - CNN-GRU prediction
+   - Save to Firestore (activity_predictions)
+5. Log chi tiết (samples, prediction, probabilities)
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ C. FLUTTER WEB APP (Presentation Layer)                                     │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+FILE STRUCTURE:
+c:\PBL4\PBL4_Backend\flutter_app\
+├── lib/
+│   ├── main.dart                          # Entry point
+│   ├── screens/
+│   │   ├── home_screen.dart              # Live activity display
+│   │   ├── calo_screen_predictions.dart  # Calorie statistics
+│   │   ├── history_screen_predictions.dart  # Pie chart
+│   │   └── notifications_screen_firebase.dart  # Notifications
+│   └── services/
+│       └── activity_monitor_service.dart  # Sitting alert service
+├── web/
+│   └── index.html                         # Web entry
+└── pubspec.yaml                           # Dependencies
+
+MAIN.DART:
+
+void main() async {
+  - Initialize Firebase
+  - Configure localization (vi_VN)
+  - Run MaterialApp
+}
+
+SCREENS:
+
+1. HOME_SCREEN.DART (Main Dashboard)
+
+   CHỨC NĂNG:
+   - Hiển thị hoạt động hiện tại real-time
+   - Độ tin cậy (confidence)
+   - Xác suất các hoạt động (bar chart nhỏ)
+   - Tích hợp ActivityMonitorService
+
+   QUERY FIRESTORE:
+   FirebaseFirestore.instance
+     .collection('activity_predictions')
+     .where('user_id', isEqualTo: 'user1')
+     .orderBy('timestamp', descending: true)
+     .limit(1)
+     .snapshots()
+
+   UI COMPONENTS:
+   - AppBar with title, notifications icon
+   - Current activity card (large icon + name)
+   - Confidence progress bar
+   - Probabilities breakdown
+   - Navigation drawer (Calo, History, Notifications)
+
+   CALLBACKS:
+   - onSittingAlert: Show dialog when sitting >1min
+   - onActivityChange: Update UI immediately
+
+2. CALO_SCREEN_PREDICTIONS.DART (Statistics)
+
+   CHỨC NĂNG:
+   - Date picker (chọn ngày)
+   - Tổng calo tiêu thụ trong ngày
+   - Tổng thời lượng hoạt động
+   - Chi tiết từng hoạt động (calo + thời lượng)
+   - Bar chart calo theo hoạt động
+   - Bar chart thời lượng theo hoạt động
+
+   QUERY FIRESTORE:
+   FirebaseFirestore.instance
+     .collection('activity_predictions')
+     .where('user_id', isEqualTo: 'user1')
+     .snapshots()
+   
+   + Client-side filtering by date
+
+   CALORIE RATES (per minute):
+   - WALKING: 3.5 cal/min
+   - RUNNING: 9.0 cal/min
+   - UPSTAIRS: 7.0 cal/min
+   - DOWNSTAIRS: 5.0 cal/min
+   - SITTING: 1.0 cal/min
+   - STANDING: 1.5 cal/min
+
+   CALCULATION:
+   calories = duration_minutes × calorie_rate[activity]
+
+3. HISTORY_SCREEN_PREDICTIONS.DART (Pie Chart)
+
+   CHỨC NĂNG:
+   - Date picker
+   - Pie chart thống kê % hoạt động trong ngày
+   - Chỉ hiển thị pie chart (không có danh sách)
+   - Legend: Tên hoạt động + thời lượng + %
+
+   QUERY: Tương tự Calo screen
+
+   CALCULATION:
+   - Sum duration_seconds per activity
+   - Calculate percentage: (activity_duration / total_duration) × 100%
+   - Format time: "Xh Yp Zs"
+
+   PIE CHART:
+   - Library: fl_chart
+   - Show percentage on chart
+   - Legend with activity icon + name + time + %
+
+4. NOTIFICATIONS_SCREEN_FIREBASE.DART
+
+   CHỨC NĂNG:
+   - Hiển thị tất cả thông báo
+   - Highlight chưa đọc
+   - Click để đánh dấu đã đọc
+   - Styling theo type (sitting_alert = orange)
+
+   QUERY FIRESTORE:
+   FirebaseFirestore.instance
+     .collection('notifications')
+     .where('user_id', isEqualTo: 'user1')
+     .orderBy('created_at', descending: true)
+     .snapshots()
+
+   NOTIFICATION TYPES:
+   - sitting_alert: Ngồi quá lâu
+   - (Có thể mở rộng: activity_goal, health_tip, etc.)
+
+SERVICES:
+
+1. ACTIVITY_MONITOR_SERVICE.DART (Singleton)
+
+   CHỨC NĂNG:
+   - Monitor hoạt động real-time từ Firestore
+   - Phát hiện ngồi liên tục >1 phút
+   - Lưu notification vào Firestore
+   - Callbacks cho UI
+
+   LOGIC:
+   - Listen to latest prediction
+   - If SITTING:
+     + Accumulate sitting duration
+     + If ≥60 seconds && not notified yet:
+       → Trigger alert
+       → Save notification to Firestore
+       → Call onSittingAlert callback
+   - If other activity:
+     + Reset sitting timer
+
+   QUERY:
+   FirebaseFirestore.instance
+     .collection('activity_predictions')
+     .where('user_id', isEqualTo: 'user1')
+     .orderBy('timestamp', descending: true)
+     .limit(1)
+     .snapshots()
+
+   CALLBACKS:
+   - onSittingAlert(message, duration)
+   - onActivityChange(activity, confidence)
+
+   THRESHOLD:
+   - 60 seconds (1 minute)
+   - Variable: _hasNotifiedOneMinute
+
+   NOTIFICATION SAVE:
+   FirebaseFirestore.instance
+     .collection('notifications')
+     .add({
+       'user_id': userId,
+       'title': 'Cảnh báo: Ngồi quá lâu!',
+       'message': 'Bạn đã ngồi hơn 1 phút...',
+       'type': 'sitting_alert',
+       'duration_minutes': duration.inMinutes,
+       'is_read': false,
+       'created_at': FieldValue.serverTimestamp(),
+       'timestamp': DateTime.now().toIso8601String(),
+     })
+
+================================================================================
+                        5. LUỒNG DỮ LIỆU CHI TIẾT
+================================================================================
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ LUỒNG 1: TỪ CảM BIẾN ĐẾN DỰ ĐOÁN                                           │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+BƯỚC 1: ESP32 đọc cảm biến (20Hz - 50ms)
+├── MPU6050.getMotion6(&ax, &ay, &az, &gx, &gy, &gz)
+├── Calculate amag = sqrt(ax² + ay² + az²)
+├── Apply Kalman filter → pitch_kf, roll_kf
+└── Buffer 10 samples (500ms)
+
+BƯỚC 2: ESP32 gửi lên Firebase Realtime DB (2Hz - 500ms)
+├── Firebase.setFloat("/sensor_data/ax_g", ax_g)
+├── Firebase.setFloat("/sensor_data/ay_g", ay_g)
+├── ...
+└── Firebase.setInt("/sensor_data/timestamp", millis())
+
+BƯỚC 3: FastAPI Backend nhận dữ liệu
+├── Firebase listener triggered
+├── handle_firebase_data(data) called
+├── Extract sensor values
+└── data_buffer.add_sample(data)
+
+BƯỚC 4: Buffering (40 samples = 2 seconds)
+├── Buffer size: 40 samples
+├── Overlap: 50% (20 samples)
+├── Check: data_buffer.can_predict()
+└── If True → get_window()
+
+BƯỚC 5: Preprocessing
+├── window = data_buffer.get_window() → (40, 9)
+├── Normalize with StandardScaler
+├── Feature engineering (nếu cần)
+└── Reshape for CNN-GRU: (1, 40, 9)
+
+BƯỚC 6: AI Prediction
+├── model.predict(window)
+├── Output: probabilities (1, 6)
+├── activity = argmax(probabilities)
+├── confidence = max(probabilities)
+└── Convert class index → activity name
+
+BƯỚC 7: Calculate time info
+├── Get window samples with timestamps
+├── start_time = first_sample['timestamp']
+├── end_time = last_sample['timestamp']
+└── duration_seconds = (end_time - start_time) / 1000
+
+BƯỚC 8: Save to Firestore
+├── firebase_handler.save_prediction_to_firestore()
+├── Collection: activity_predictions
+├── Document: {
+│     activity, confidence, probabilities,
+│     user_id, start_time, end_time, duration_seconds,
+│     created_at, timestamp
+│   }
+└── Return doc_id
+
+BƯỚC 9: Log results
+├── Print activity, confidence
+├── Print probabilities (sorted)
+├── Print samples used
+└── Print Firestore doc_id
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ LUỒNG 2: TỪ FIRESTORE ĐẾN FLUTTER UI                                       │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+BƯỚC 1: Flutter listen Firestore (Real-time)
+├── StreamBuilder<QuerySnapshot>
+├── .collection('activity_predictions')
+├── .where('user_id', isEqualTo: 'user1')
+├── .orderBy('timestamp', descending: true)
+├── .limit(1)
+└── .snapshots()
+
+BƯỚC 2: Firestore push update (< 500ms)
+├── New document added
+├── Snapshot triggered
+├── snapshot.docs.first.data()
+└── Extract: activity, confidence, probabilities
+
+BƯỚC 3: Update UI
+├── setState() called
+├── currentActivity = _translateActivity(activity)
+├── confidence = confidence
+├── probabilities = probabilities
+└── UI rebuilds
+
+BƯỚC 4: Translate activity
+├── WALKING → Đi bộ
+├── RUNNING → Chạy
+├── SITTING → Ngồi
+├── STANDING → Đứng
+├── UPSTAIRS → Lên cầu thang
+└── DOWNSTAIRS → Xuống cầu thang
+
+BƯỚC 5: Display
+├── Large activity icon
+├── Activity name (Vietnamese)
+├── Confidence bar (circular progress)
+└── Probabilities breakdown
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ LUỒNG 3: CẢNH BÁO NGỒI QUÁ LÂU                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+BƯỚC 1: ActivityMonitorService listen predictions
+├── Singleton service initialized at app start
+├── Listen to latest prediction (limit 1)
+└── Real-time snapshots
+
+BƯỚC 2: New prediction arrives
+├── Extract: activity, duration_seconds, timestamp
+├── Check if activity == 'SITTING'
+└── If yes → handleSitting()
+
+BƯỚC 3: Handle sitting
+├── If NOT sitting before:
+│   ├── Start sitting timer
+│   ├── _sittingStartTime = now
+│   ├── _totalSittingSeconds = duration_seconds
+│   └── _hasNotifiedOneMinute = false
+├── If already sitting:
+│   └── _totalSittingSeconds += duration_seconds
+└── Check threshold
+
+BƯỚC 4: Check 1-minute threshold
+├── if (_totalSittingSeconds >= 60)
+├── AND (!_hasNotifiedOneMinute)
+└── Then → _triggerSittingAlert()
+
+BƯỚC 5: Trigger alert
+├── Calculate duration
+├── Create message: "Bạn đã ngồi hơn 1 phút..."
+├── Save notification to Firestore:
+│   FirebaseFirestore.instance
+│     .collection('notifications')
+│     .add({
+│       user_id, title, message, type,
+│       duration_minutes, is_read, created_at, timestamp
+│     })
+├── Call callback: onSittingAlert(message, duration)
+└── Set _hasNotifiedOneMinute = true
+
+BƯỚC 6: Show alert in UI
+├── Alert dialog with title, message, icon
+├── Buttons: "Đóng", "Xem thông báo"
+├── SnackBar with "Xem" action
+└── Navigate to NotificationsScreen
+
+BƯỚC 7: Reset when activity changes
+├── If activity != 'SITTING'
+├── _resetSitting()
+├── _totalSittingSeconds = 0
+├── _hasNotifiedOneMinute = false
+└── _sittingStartTime = null
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ LUỒNG 4: THỐNG KÊ CALO VÀ LỊCH SỬ                                          │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+BƯỚC 1: User chọn ngày
+├── DatePicker (Vietnamese locale)
+├── User selects date
+└── setState → selectedDate
+
+BƯỚC 2: Query Firestore
+├── Get all predictions for user
+├── No date filter in query (client-side filtering)
+└── .snapshots() for real-time updates
+
+BƯỚC 3: Client-side filtering
+├── _filterByDate(docs)
+├── Parse start_time for each doc
+├── Check if date matches selectedDate
+└── Return filtered list
+
+BƯỚC 4: Calculate statistics
+├── For each prediction:
+│   ├── Extract activity, duration_seconds
+│   ├── duration_minutes = duration_seconds / 60
+│   ├── calorie_rate = caloriesPerMinute[activity]
+│   ├── calories = calorie_rate × duration_minutes
+│   ├── Accumulate:
+│   │   ├── totalCalories += calories
+│   │   ├── totalDuration += duration_seconds
+│   │   ├── activityCalories[activity] += calories
+│   │   └── activityDuration[activity] += duration_seconds
+└── Return stats map
+
+BƯỚC 5: Display (Calo Screen)
+├── Summary card:
+│   ├── Total calories (orange icon)
+│   └── Total minutes (blue icon)
+├── Activity breakdown:
+│   ├── For each activity:
+│   │   ├── Icon + name
+│   │   ├── Duration (minutes)
+│   │   └── Calories
+│   └── Sorted by calories (descending)
+├── Bar chart - Calories
+└── Bar chart - Duration
+
+BƯỚC 6: Display (History Screen - Pie Chart)
+├── Calculate percentages:
+│   └── percentage = (activity_duration / total_duration) × 100%
+├── Pie chart sections:
+│   ├── Color by activity
+│   ├── Value = duration
+│   ├── Title = percentage on chart
+│   └── Radius = 100
+└── Legend:
+    ├── Activity icon + name
+    ├── Duration formatted ("Xh Yp Zs")
+    └── Percentage
+
+================================================================================
+                        6. CƠ SỞ DỮ LIỆU
+================================================================================
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ A. FIREBASE REALTIME DATABASE                                               │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+PATH: /sensor_data
+
+STRUCTURE:
+{
+  "ax_g": -0.02,          // float: Accelerometer X (g)
+  "ay_g": 0.98,           // float: Accelerometer Y (g)
+  "az_g": 0.15,           // float: Accelerometer Z (g)
+  "gx_dps": 1.2,          // float: Gyroscope X (deg/s)
+  "gy_dps": -0.5,         // float: Gyroscope Y (deg/s)
+  "gz_dps": 0.3,          // float: Gyroscope Z (deg/s)
+  "amag_g": 1.01,         // float: Magnitude (g)
+  "pitch_kf": 5.2,        // float: Kalman-filtered pitch (deg)
+  "roll_kf": 2.8,         // float: Kalman-filtered roll (deg)
+  "timestamp": 1699876543210  // long: Milliseconds since epoch
+}
+
+FREQUENCY: 2 updates/second (500ms interval)
+SIZE: ~200 bytes per sample
+RETENTION: Overwrite (only latest sample kept)
+
+INDICES: None (single path, overwrite mode)
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ B. CLOUD FIRESTORE                                                          │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+COLLECTION 1: activity_predictions
+-----------
+DOCUMENT STRUCTURE:
+{
+  "activity": "SITTING",                    // string: Activity name
+  "confidence": 0.95,                       // float: 0.0 - 1.0
+  "probabilities": {                        // map<string, float>
+    "SITTING": 0.95,
+    "STANDING": 0.03,
+    "WALKING": 0.01,
+    "RUNNING": 0.005,
+    "UPSTAIRS": 0.003,
+    "DOWNSTAIRS": 0.002
+  },
+  "user_id": "user1",                       // string: User identifier
+  "start_time": "2024-11-15T10:30:43.000",  // string: ISO 8601
+  "end_time": "2024-11-15T10:30:45.000",    // string: ISO 8601
+  "duration_seconds": 2.0,                  // float: Duration in seconds
+  "created_at": "2024-11-15T10:30:45.123",  // string: ISO 8601
+  "timestamp": Timestamp                     // Firestore Timestamp (server)
+}
+
+INDICES REQUIRED:
+1. user_id (Ascending) + timestamp (Descending)
+   - For: .where('user_id', '==', 'user1').orderBy('timestamp', descending: true)
+
+FREQUENCY: ~1 document every 2 seconds (when prediction made)
+SIZE: ~300 bytes per document
+RETENTION: Unlimited (or set TTL if needed)
+
+QUERIES:
+- Get latest: .where('user_id', '==', 'user1').orderBy('timestamp', desc).limit(1)
+- Get all for user: .where('user_id', '==', 'user1')
+- Get by date range: Client-side filtering on start_time
+
+COLLECTION 2: notifications
+-----------
+DOCUMENT STRUCTURE:
+{
+  "user_id": "user1",                       // string: User identifier
+  "title": "Cảnh báo: Ngồi quá lâu!",      // string: Notification title
+  "message": "Bạn đã ngồi hơn 1 phút. Hãy đứng dậy và vận động để tốt cho sức khỏe.",  // string
+  "type": "sitting_alert",                  // string: Notification type
+  "duration_minutes": 1,                    // int: Duration in minutes
+  "is_read": false,                         // boolean: Read status
+  "created_at": Timestamp,                  // Firestore Timestamp (server)
+  "timestamp": "2024-11-15T10:35:20.000Z"  // string: ISO 8601
+}
+
+INDICES REQUIRED:
+1. user_id (Ascending) + created_at (Descending)
+   - For: .where('user_id', '==', 'user1').orderBy('created_at', desc)
+
+NOTIFICATION TYPES:
+- sitting_alert: Ngồi quá lâu (>1 phút)
+- (Future: activity_goal, health_tip, system_notification)
+
+FREQUENCY: ~1 notification per minute (when sitting alert triggered)
+SIZE: ~250 bytes per document
+RETENTION: Unlimited (or auto-delete after 30 days)
+
+QUERIES:
+- Get all for user: .where('user_id', '==', 'user1').orderBy('created_at', desc)
+- Get unread: .where('user_id', '==', 'user1').where('is_read', '==', false)
+- Mark as read: .doc(docId).update({'is_read': true})
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ C. DATA RETENTION & CLEANUP                                                 │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+STRATEGY:
+
+1. Realtime Database:
+   - Overwrite mode (only latest sensor data)
+   - No cleanup needed
+
+2. activity_predictions:
+   - Keep all predictions (historical analysis)
+   - Optional: TTL after 90 days (cloud function)
+   - Estimated: ~43,200 docs/day (2 predictions/sec × 86400/2)
+
+3. notifications:
+   - Auto-delete after 30 days (cloud function)
+   - Or user can manually delete
+   - Estimated: ~60-100 docs/day (sitting alerts)
+
+CLOUD FUNCTION (Optional):
+exports.cleanupOldData = functions.pubsub
+  .schedule('every 24 hours')
+  .onRun(async (context) => {
+    const cutoffDate = admin.firestore.Timestamp.fromDate(
+      new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+    );
+    
+    // Delete old notifications
+    const notificationsQuery = admin.firestore()
+      .collection('notifications')
+      .where('created_at', '<', cutoffDate);
+    
+    // Batch delete...
+  });
+
+================================================================================
+                        7. API ENDPOINTS
+================================================================================
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ FASTAPI BACKEND ENDPOINTS                                                   │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+BASE URL: http://127.0.0.1:8000
+
+GENERAL ENDPOINTS:
+------------------
+
+1. GET /
+   Response: {
+     "message": "Human Activity Recognition API",
+     "version": "1.0.0",
+     "endpoints": {...}
+   }
+
+2. GET /health
+   Response: {
+     "status": "healthy",
+     "model_loaded": true,
+     "firebase_connected": true,
+     "timestamp": "2024-11-15T10:30:45.123Z",
+     "model_info": {
+       "activities": ["WALKING", "RUNNING", ...],
+       "window_size": 40,
+       "n_features": 9
+     }
+   }
+
+PREDICTION ENDPOINTS:
+--------------------
+
+3. POST /predict/single
+   Body: {
+     "ax_g": 0.05,
+     "ay_g": 0.98,
+     "az_g": 0.15,
+     "gx_dps": 1.2,
+     "gy_dps": -0.5,
+     "gz_dps": 0.3,
+     "amag_g": 1.01,
+     "pitch_kf": 5.2,
+     "roll_kf": 2.8,
+     "timestamp": 1699876543210
+   }
+   Response: {
+     "activity": "SITTING",
+     "confidence": 0.95,
+     "probabilities": {...},
+     "timestamp": "...",
+     "samples_used": 40
+   }
+   Note: Requires buffering 40 samples first
+
+4. POST /predict/batch
+   Body: {
+     "data": [
+       {sensor_data_1},
+       {sensor_data_2},
+       ...
+     ],
+     "device_id": "ESP32_001"
+   }
+   Response: Same as predict/single
+   Note: Requires at least 40 samples in batch
+
+FIREBASE ENDPOINTS:
+------------------
+
+5. POST /firebase/start
+   Body: {
+     "database_url": "https://xxx.firebaseio.com",
+     "service_account_path": "./serviceAccountKey.json",
+     "realtime_db_path": "/sensor_data",
+     "firestore_collection": "activity_predictions",
+     "user_id": "user1"
+   }
+   Response: {
+     "status": "started",
+     "message": "Firebase listener started successfully",
+     ...
+   }
+
+6. POST /firebase/stop
+   Response: {
+     "status": "stopped",
+     "total_predictions": 1234,
+     ...
+   }
+
+7. GET /stream/status
+   Response: {
+     "stream_active": true,
+     "firebase_connected": true,
+     "model_loaded": true,
+     "predictions_made": 1234,
+     "buffer_size": 40,
+     "can_predict": true,
+     ...
+   }
+
+FIRESTORE ENDPOINTS:
+-------------------
+
+8. GET /firestore/predictions?user_id=user1&limit=10
+   Response: {
+     "status": "success",
+     "count": 10,
+     "predictions": [
+       {
+         "id": "doc_id",
+         "activity": "SITTING",
+         "confidence": 0.95,
+         ...
+       },
+       ...
+     ]
+   }
+
+9. GET /firestore/predictions/{doc_id}
+   Response: {
+     "status": "success",
+     "prediction": {
+       "id": "doc_id",
+       "activity": "SITTING",
+       ...
+     }
+   }
+
+10. DELETE /firestore/predictions/{doc_id}
+    Response: {
+      "status": "deleted",
+      "message": "Prediction {doc_id} deleted successfully"
+    }
+
+BUFFER ENDPOINTS:
+----------------
+
+11. GET /buffer/status
+    Response: {
+      "buffer_size": 40,
+      "window_size": 40,
+      "can_predict": true,
+      "stream_active": true,
+      "predictions_made": 1234
+    }
+
+12. POST /buffer/clear
+    Response: {
+      "status": "cleared",
+      "message": "Data buffer cleared successfully"
+    }
+
+SWAGGER UI: http://127.0.0.1:8000/docs
+REDOC: http://127.0.0.1:8000/redoc
+
+================================================================================
+                        8. DEPLOYMENT
+================================================================================
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ A. PHÁT TRIỂN (DEVELOPMENT)                                                 │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+REQUIREMENTS:
+1. Python 3.13
+2. Flutter SDK (latest stable)
+3. Firebase Project với Realtime DB + Firestore
+4. ESP32 với WiFi
+5. MPU6050 sensor
+
+SETUP STEPS:
+
+1. Clone repository
+2. Setup ESP32:
+   - Cấu hình WiFi credentials
+   - Cấu hình Firebase credentials
+   - Upload firmware
+   
+3. Setup Backend:
+   cd c:\PBL4\AIBackend\backend
+   pip install -r requirements.txt
+   
+   Tạo .env file:
+   FIREBASE_DATABASE_URL=https://xxx.firebaseio.com
+   FIREBASE_SERVICE_ACCOUNT_PATH=./serviceAccountKey.json
+   
+   Start server:
+   python main.py
+   
+4. Setup Flutter:
+   cd c:\PBL4\PBL4_Backend\flutter_app
+   flutter pub get
+   
+   Configure Firebase (web):
+   - Add Firebase config to web/index.html
+   
+   Run app:
+   flutter run -d chrome
+
+5. Start system:
+   - ESP32 đẩy dữ liệu lên Firebase
+   - Backend start Firebase listener: POST /firebase/start
+   - Flutter app tự động hiển thị real-time
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ B. SẢN XUẤT (PRODUCTION) - OPTIONAL                                         │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+BACKEND DEPLOYMENT (Cloud Run / AWS Lambda / Heroku):
+1. Dockerize FastAPI app
+2. Deploy to cloud
+3. Configure environment variables
+4. Setup health checks
+5. Enable auto-scaling
+
+FLUTTER WEB DEPLOYMENT (Firebase Hosting):
+1. flutter build web --release
+2. firebase deploy --only hosting
+3. Configure custom domain
+4. Enable HTTPS
+
+ESP32 OTA UPDATES:
+1. Setup OTA server
+2. Version management
+3. Remote firmware updates
+
+MONITORING:
+1. Application logs (Cloud Logging)
+2. Error tracking (Sentry)
+3. Performance monitoring (Firebase Performance)
+4. Uptime monitoring (UptimeRobot)
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ C. BẢO MẬT (SECURITY)                                                       │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+1. Firebase Authentication:
+   - Implement user login
+   - JWT tokens
+   - Multi-user support
+
+2. Firestore Security Rules:
+   rules_version = '2';
+   service cloud.firestore {
+     match /databases/{database}/documents {
+       match /activity_predictions/{document} {
+         allow read, write: if request.auth != null 
+           && request.auth.uid == resource.data.user_id;
+       }
+       match /notifications/{document} {
+         allow read, write: if request.auth != null 
+           && request.auth.uid == resource.data.user_id;
+       }
+     }
+   }
+
+3. Realtime Database Rules:
+   {
+     "rules": {
+       "sensor_data": {
+         ".read": "auth != null",
+         ".write": "auth != null"
+       }
+     }
+   }
+
+4. API Security:
+   - API keys
+   - Rate limiting
+   - CORS configuration
+   - Input validation
+
+5. ESP32 Security:
+   - Encrypted WiFi credentials
+   - Secure boot
+   - Flash encryption
+
+================================================================================
+                        9. TỐI ƯU HÓA & HIỆU NĂNG
+================================================================================
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ PERFORMANCE OPTIMIZATIONS                                                   │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+1. FIRESTORE QUERIES:
+   ✅ Use indexed queries: orderBy + limit
+   ✅ Avoid fetching all documents
+   ✅ Client-side filtering for dates (simple queries)
+   ✅ Use snapshots() for real-time updates
+   
+   Performance:
+   - Query latency: < 500ms
+   - Real-time update: < 200ms
+
+2. BACKEND PROCESSING:
+   ✅ Sliding window buffer (50% overlap)
+   ✅ Async FastAPI endpoints
+   ✅ Background tasks for long operations
+   ✅ Model loaded once at startup
+   
+   Performance:
+   - Prediction time: ~100ms
+   - Total latency: ~300ms (sensor → prediction → Firestore)
+
+3. FLUTTER APP:
+   ✅ StreamBuilder for real-time updates
+   ✅ Limit queries with .limit(1)
+   ✅ Client-side caching
+   ✅ Lazy loading for lists
+   
+   Performance:
+   - UI update: < 100ms
+   - Total latency: < 500ms (prediction → UI)
+
+4. ESP32 OPTIMIZATION:
+   ✅ Efficient sampling (20Hz)
+   ✅ Batch send (500ms interval)
+   ✅ Kalman filter for smoothing
+   ✅ Deep sleep when idle (future)
+
+5. NETWORK OPTIMIZATION:
+   ✅ Minimize payload size
+   ✅ Use WebSocket (Firestore snapshots)
+   ✅ Compression (if needed)
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ SCALABILITY                                                                 │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+1. Multi-user support:
+   - User authentication
+   - User-specific queries
+   - Data isolation
+
+2. Multiple devices:
+   - Device registration
+   - Device management
+   - Per-device predictions
+
+3. High-frequency data:
+   - Batching
+   - Aggregation
+   - Downsampling
+
+4. Large datasets:
+   - Pagination
+   - Data archiving
+   - Query optimization
+
+================================================================================
+                        10. TROUBLESHOOTING
+================================================================================
+
+COMMON ISSUES:
+
+1. "Model not loaded"
+   - Check model file path
+   - Verify artifacts directory
+   - Check TensorFlow version
+
+2. "Firebase connection failed"
+   - Verify serviceAccountKey.json
+   - Check Firebase project settings
+   - Verify network connectivity
+
+3. "Insufficient data for prediction"
+   - Need at least 40 samples (2 seconds)
+   - Check buffer status: GET /buffer/status
+   - Verify ESP32 is sending data
+
+4. "Firestore index error"
+   - Create required indices
+   - Wait for index creation (can take minutes)
+   - Check Firebase Console
+
+5. "Slow Flutter updates"
+   - Verify indexed queries
+   - Use .limit(1) for latest prediction
+   - Check network latency
+
+6. "Sitting alert not working"
+   - Check ActivityMonitorService initialized
+   - Verify threshold: 60 seconds
+   - Check notification permissions
+
+DEBUG LOGS:
+
+Backend:
+- Check terminal logs for predictions
+- Verify Firebase listener status: GET /stream/status
+- Check Firestore writes in Firebase Console
+
+Flutter:
+- Check browser console for errors
+- Verify Firestore connection
+- Check StreamBuilder data
+
+ESP32:
+- Serial monitor for sensor readings
+- Verify WiFi connection
+- Check Firebase write status
+
+================================================================================
+                        KẾT LUẬN
+================================================================================
+
+Hệ thống Human Activity Recognition này là một ứng dụng IoT + AI hoàn chỉnh,
+bao gồm:
+
+1. ✅ Phần cứng: ESP32 + MPU6050 (cảm biến IMU)
+2. ✅ Truyền dữ liệu: Firebase Realtime Database
+3. ✅ AI/ML: CNN-GRU model với FastAPI backend
+4. ✅ Lưu trữ: Cloud Firestore
+5. ✅ Giao diện: Flutter Web App
+6. ✅ Tính năng: Real-time monitoring, statistics, alerts
+
+CÔNG NGHỆ CHÍNH:
+- ESP32 (C/C++) + MPU6050
+- Python + FastAPI + TensorFlow
+- Firebase (Realtime DB + Firestore)
+- Flutter (Dart) + fl_chart
+
+LUỒNG DỮ LIỆU:
+ESP32 → Firebase Realtime DB → FastAPI Backend → Firestore → Flutter App
+
+TÍNH NĂNG NỔI BẬT:
+- Nhận diện 6 hoạt động với độ chính xác cao
+- Cảnh báo ngồi quá lâu (>1 phút)
+- Thống kê calo tiêu thụ
+- Lịch sử hoạt động với pie chart
+- Real-time updates < 500ms
+
+HỆ THỐNG SẴN SÀNG ĐỂ:
+- Mở rộng thêm người dùng
+- Thêm hoạt động mới
+- Tích hợp thiết bị khác
+- Deploy lên production
+
+================================================================================
+                    © 2024 PBL4 - Human Activity Recognition
+================================================================================

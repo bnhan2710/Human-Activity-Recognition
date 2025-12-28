@@ -253,7 +253,10 @@ class FirebaseHandler:
     def save_prediction_to_firestore(self, activity: str, confidence: float, 
                                      probabilities: Dict[str, float], 
                                      user_id: str = "user1",
-                                     collection: str = "activity_predictions") -> str:
+                                     collection: str = "activity_predictions",
+                                     start_time: Optional[datetime] = None,
+                                     end_time: Optional[datetime] = None,
+                                     duration_seconds: Optional[float] = None) -> str:
         """
         Save prediction result to Firestore
         
@@ -263,6 +266,9 @@ class FirebaseHandler:
             probabilities: Dictionary of activity probabilities
             user_id: User identifier
             collection: Firestore collection name
+            start_time: Activity start timestamp
+            end_time: Activity end timestamp
+            duration_seconds: Activity duration in seconds
             
         Returns:
             Document ID of the saved prediction
@@ -271,20 +277,24 @@ class FirebaseHandler:
             raise ConnectionError("Firestore client not initialized")
         
         try:
+            now = datetime.now()
             prediction_data = {
                 'activity': activity,
                 'confidence': confidence,
                 'probabilities': probabilities,
                 'timestamp': firestore.SERVER_TIMESTAMP,
-                'created_at': datetime.now().isoformat(),
-                'user_id': user_id
+                'created_at': now.isoformat(),
+                'user_id': user_id,
+                'start_time': start_time.isoformat() if start_time else now.isoformat(),
+                'end_time': end_time.isoformat() if end_time else now.isoformat(),
+                'duration_seconds': duration_seconds if duration_seconds is not None else 2.0
             }
             
             # Add document to collection
             doc_ref = self._firestore_client.collection(collection).add(prediction_data)
             doc_id = doc_ref[1].id
             
-            logger.info(f"✅ Saved prediction to Firestore: {activity} ({confidence:.2%}) - Doc ID: {doc_id}")
+            logger.info(f"✅ Saved prediction to Firestore: {activity} ({confidence:.2%}) - Duration: {prediction_data['duration_seconds']}s - Doc ID: {doc_id}")
             return doc_id
         
         except Exception as e:

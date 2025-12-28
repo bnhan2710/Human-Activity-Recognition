@@ -1,0 +1,154 @@
+@startuml Human_Activity_Recognition_Use_Case
+!theme plain
+skinparam actorStyle awesome
+skinparam packageStyle rectangle
+skinparam backgroundColor #FFFFFF
+skinparam handwritten false
+
+title Sơ Đồ Use Case - Hệ Thống Nhận Diện Hoạt Động Người Dùng
+
+' Actors
+actor "Người Dùng" as User #lightblue
+actor "ESP32\n(IoT Device)" as ESP32 #lightgreen
+actor "AI Backend\n(FastAPI)" as Backend #orange
+actor "Firebase" as Firebase #yellow
+
+' System boundary
+rectangle "Hệ Thống HAR (Human Activity Recognition)" {
+    
+    ' User Use Cases
+    package "Quản Lý Hoạt Động" #lightblue {
+        usecase "UC1: Xem hoạt động\ntheo thời gian thực" as UC1
+        usecase "UC2: Xem lịch sử\nhoạt động" as UC2
+        usecase "UC3: Chọn ngày\nxem thống kê" as UC3
+        usecase "UC4: Xem biểu đồ\nhoạt động (Pie Chart)" as UC4
+    }
+    
+    package "Quản Lý Sức Khỏe" #lightgreen {
+        usecase "UC5: Xem thống kê\ncalo tiêu thụ" as UC5
+        usecase "UC6: Xem thời lượng\nvận động" as UC6
+        usecase "UC7: Nhận cảnh báo\nngồi quá lâu" as UC7
+        usecase "UC8: Xem danh sách\nthông báo" as UC8
+        usecase "UC9: Đánh dấu\nđã đọc thông báo" as UC9
+    }
+    
+    package "Thu Thập Dữ Liệu" #yellow {
+        usecase "UC10: Đọc cảm biến\nIMU (MPU6050)" as UC10
+        usecase "UC11: Gửi dữ liệu\nlên Firebase" as UC11
+        usecase "UC12: Áp dụng\nKalman Filter" as UC12
+    }
+    
+    package "Xử Lý AI/ML" #orange {
+        usecase "UC13: Lắng nghe\nFirebase Realtime DB" as UC13
+        usecase "UC14: Buffer dữ liệu\n(40 samples)" as UC14
+        usecase "UC15: Dự đoán hoạt động\n(CNN-GRU)" as UC15
+        usecase "UC16: Lưu kết quả\nvào Firestore" as UC16
+    }
+    
+    package "Lưu Trữ & Đồng Bộ" #pink {
+        usecase "UC17: Lưu trữ\nsensor data" as UC17
+        usecase "UC18: Lưu trữ\npredictions" as UC18
+        usecase "UC19: Lưu trữ\nnotifications" as UC19
+        usecase "UC20: Đồng bộ real-time\nvới Flutter" as UC20
+    }
+    
+    package "Giám Sát Hoạt Động" #lavender {
+        usecase "UC21: Theo dõi\nthời gian ngồi" as UC21
+        usecase "UC22: Phát hiện\nngồi > 1 phút" as UC22
+        usecase "UC23: Tạo thông báo\ncảnh báo" as UC23
+    }
+}
+
+' User relationships
+User --> UC1 : Xem
+User --> UC2 : Xem
+User --> UC3 : Chọn ngày
+User --> UC4 : Xem biểu đồ
+User --> UC5 : Xem calo
+User --> UC6 : Xem thời lượng
+User --> UC7 : Nhận cảnh báo
+User --> UC8 : Xem thông báo
+User --> UC9 : Đánh dấu
+
+' ESP32 relationships
+ESP32 --> UC10 : Thực hiện
+ESP32 --> UC11 : Gửi
+ESP32 --> UC12 : Áp dụng
+
+' Backend relationships
+Backend --> UC13 : Lắng nghe
+Backend --> UC14 : Buffer
+Backend --> UC15 : Dự đoán
+Backend --> UC16 : Lưu
+
+' Firebase relationships
+Firebase --> UC17 : Lưu trữ
+Firebase --> UC18 : Lưu trữ
+Firebase --> UC19 : Lưu trữ
+Firebase --> UC20 : Đồng bộ
+
+' Include relationships
+UC1 ..> UC20 : <<include>>
+UC2 ..> UC18 : <<include>>
+UC4 ..> UC18 : <<include>>
+UC5 ..> UC18 : <<include>>
+UC6 ..> UC18 : <<include>>
+UC8 ..> UC19 : <<include>>
+
+UC11 ..> UC17 : <<include>>
+UC13 ..> UC17 : <<include>>
+UC15 ..> UC14 : <<include>>
+UC16 ..> UC18 : <<include>>
+
+UC7 ..> UC21 : <<include>>
+UC21 ..> UC22 : <<include>>
+UC22 ..> UC23 : <<include>>
+UC23 ..> UC19 : <<include>>
+
+' Extend relationships
+UC3 ..> UC2 : <<extend>>
+UC3 ..> UC5 : <<extend>>
+UC3 ..> UC4 : <<extend>>
+
+UC9 ..> UC8 : <<extend>>
+
+' Notes
+note right of UC1
+  Hiển thị:
+  - Hoạt động hiện tại
+  - Độ tin cậy
+  - Xác suất các hoạt động
+  - Real-time updates < 500ms
+end note
+
+note right of UC7
+  Cảnh báo khi:
+  - Ngồi liên tục > 1 phút
+  - Hiển thị Alert Dialog
+  - SnackBar notification
+end note
+
+note right of UC10
+  Sensors:
+  - Accelerometer (3 trục)
+  - Gyroscope (3 trục)
+  - Tần suất: 20Hz
+end note
+
+note right of UC15
+  AI Model:
+  - CNN-GRU Hybrid
+  - Input: 40 samples
+  - Output: 6 hoạt động
+  - Accuracy: High
+end note
+
+note bottom of UC18
+  Firestore Collection:
+  activity_predictions
+  - activity, confidence
+  - start_time, end_time
+  - duration_seconds
+end note
+
+@enduml

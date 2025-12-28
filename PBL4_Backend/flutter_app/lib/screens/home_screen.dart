@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/imu_service_mock.dart';
-import 'calo_screen_firebase.dart' as calo;
-import 'history_screen_firebase_clean.dart' as history;
+import '../services/activity_monitor_service.dart';
+import 'calo_screen_predictions.dart';
+import 'history_screen_predictions.dart';
 import 'notifications_screen_firebase.dart';
-import 'settings_screen_new.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -17,13 +17,167 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   String username = '';
   String currentActivity = 'Đang chờ dữ liệu...';
+  double confidence = 0.0;
+  Map<String, double> probabilities = {};
   final ImuService _imuService = ImuService();
+  final ActivityMonitorService _monitorService = ActivityMonitorService();
 
   @override
   void initState() {
     super.initState();
     _loadUserProfile();
     _initializeImuService();
+    _listenToPredictions(); // Listen to real-time predictions
+    _startActivityMonitoring(); // Start monitoring for sitting alerts
+  }
+
+  void _startActivityMonitoring() {
+    // Set up callbacks
+    _monitorService.onSittingAlert = (message, duration) {
+      _showSittingAlert(message);
+    };
+
+    _monitorService.onActivityChange = (activity, confidence) {
+      // Update UI immediately when activity changes
+      if (mounted) {
+        setState(() {
+          currentActivity = _translateActivity(activity);
+          this.confidence = confidence;
+        });
+        print('🔄 Activity changed: $activity → $currentActivity (${(confidence * 100).toStringAsFixed(1)}%)');
+      }
+    };
+
+    // Start monitoring
+    _monitorService.startMonitoring();
+  }
+
+  void _showSittingAlert(String message) {
+    if (!mounted) return;
+
+    // Show dialog
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 32),
+            SizedBox(width: 12),
+            Text('Cảnh báo sức khỏe!'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              message,
+              style: const TextStyle(fontSize: 16),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              '💡 Gợi ý:',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            const Text('• Đứng dậy và đi bộ vài phút'),
+            const Text('• Vươn vai, xoay cổ'),
+            const Text('• Uống nước'),
+            const Text('• Nhìn xa để nghỉ mắt'),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Đã hiểu', style: TextStyle(fontSize: 16)),
+          ),
+        ],
+      ),
+    );
+
+    // Also show snackbar
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.event_seat, color: Colors.white),
+              const SizedBox(width: 12),
+              Expanded(child: Text(message)),
+            ],
+          ),
+          backgroundColor: Colors.orange,
+          duration: const Duration(seconds: 5),
+          action: SnackBarAction(
+            label: 'Xem',
+            textColor: Colors.white,
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const NotificationsScreenFirebase(),
+                ),
+              );
+            },
+          ),
+        ),
+      );
+    }
+  }
+
+  void _listenToPredictions() {
+    // Listen to predictions from Firestore (where backend saves predictions)
+    // Use timestamp ordering with limit for fast real-time updates
+    FirebaseFirestore.instance
+        .collection('activity_predictions')
+        .where('user_id', isEqualTo: 'user1')
+        .orderBy('timestamp', descending: true) // Use server timestamp
+        .limit(1) // Only get the latest prediction
+        .snapshots()
+        .listen(
+          (snapshot) {
+            if (snapshot.docs.isNotEmpty) {
+              try {
+                final prediction = snapshot.docs.first.data();
+
+                setState(() {
+                  currentActivity =
+                      _translateActivity(prediction['activity'] ?? 'UNKNOWN');
+                  confidence = (prediction['confidence'] ?? 0.0).toDouble();
+
+                  // Parse probabilities
+                  if (prediction['probabilities'] != null) {
+                    final probs =
+                        prediction['probabilities'] as Map<dynamic, dynamic>;
+                    probabilities = probs.map((key, value) =>
+                        MapEntry(key.toString(), (value as num).toDouble()));
+                  }
+                });
+
+                print(
+                    '✅ Received prediction: $currentActivity (${(confidence * 100).toStringAsFixed(1)}%)');
+              } catch (e) {
+                print('❌ Error parsing prediction: $e');
+              }
+            }
+          },
+          onError: (error) {
+            print('❌ Prediction listen error: $error');
+          },
+        );
+  }
+
+  String _translateActivity(String activity) {
+    const activityMap = {
+      'WALKING': 'Đi bộ',
+      'UPSTAIRS': 'Lên cầu thang',
+      'DOWNSTAIRS': 'Xuống cầu thang',
+      'SITTING': 'Ngồi',
+      'STANDING': 'Đứng',
+      'RUNNING': 'Chạy',
+    };
+    return activityMap[activity] ?? activity;
   }
 
   void _loadUserProfile() async {
@@ -56,6 +210,12 @@ class _HomeScreenState extends State<HomeScreen> {
     if (mounted) {
       Navigator.pushReplacementNamed(context, '/login');
     }
+  }
+
+    @override
+  void dispose() {
+    _monitorService.stopMonitoring(); // Stop monitoring when leaving screen
+    super.dispose();
   }
 
   @override
@@ -250,13 +410,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       crossAxisSpacing: 20,
                       mainAxisSpacing: 20,
                       children: [
-                        _buildFeatureCard(
-                          'Hoạt động hiện tại',
-                          currentActivity,
-                          Icons.directions_run,
-                          Colors.green[400]!,
-                          null,
-                        ),
+                        _buildActivityCard(),
                         _buildFeatureCard(
                           'Thống kê Calo',
                           'Xem thống kê calo tiêu hao',
@@ -265,7 +419,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           () => Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder: (context) => calo.CaloScreenFirebase(),
+                              builder: (context) => const CaloScreenPredictions(),
                             ),
                           ),
                         ),
@@ -277,7 +431,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           () => Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder: (context) => history.HistoryScreen(),
+                              builder: (context) => const HistoryScreenPredictions(),
                             ),
                           ),
                         ),
@@ -294,26 +448,6 @@ class _HomeScreenState extends State<HomeScreen> {
                             ),
                           ),
                         ),
-                        _buildFeatureCard(
-                          'Quản lý dữ liệu',
-                          'Tạo dữ liệu mẫu để test',
-                          Icons.settings,
-                          Colors.teal[400]!,
-                          () {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Chức năng đang được phát triển'),
-                              ),
-                            );
-                          },
-                        ),
-                        _buildFeatureCard(
-                          'Force Seed',
-                          'Tạo lại dữ liệu mẫu',
-                          Icons.refresh,
-                          Colors.indigo[400]!,
-                          () => _showSeedDialog(),
-                        ),
                       ],
                     ),
                   ),
@@ -324,6 +458,118 @@ class _HomeScreenState extends State<HomeScreen> {
         },
       ),
     );
+  }
+
+  Widget _buildActivityCard() {
+    return Card(
+      elevation: 3,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [Colors.green[400]!.withOpacity(0.7), Colors.green[400]!],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            // Icon hoạt động
+            Icon(
+              _getActivityIcon(currentActivity),
+              size: 40,
+              color: Colors.white,
+            ),
+            const SizedBox(height: 10),
+
+            // Tiêu đề
+            const Text(
+              'Hoạt động hiện tại',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: Colors.white70,
+                height: 1.2,
+              ),
+            ),
+            const SizedBox(height: 8),
+
+            // Tên hoạt động
+            Text(
+              currentActivity,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+                height: 1.2,
+              ),
+            ),
+
+            // Confidence indicator
+            if (confidence > 0) ...[
+              const SizedBox(height: 12),
+              Column(
+                children: [
+                  // Confidence bar
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(10),
+                    child: LinearProgressIndicator(
+                      value: confidence,
+                      minHeight: 8,
+                      backgroundColor: Colors.white.withOpacity(0.3),
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        confidence > 0.8
+                            ? Colors.white
+                            : confidence > 0.5
+                                ? Colors.amber
+                                : Colors.orange,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  // Confidence text
+                  Text(
+                    '${(confidence * 100).toStringAsFixed(1)}% tin cậy',
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: Colors.white70,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  IconData _getActivityIcon(String activity) {
+    switch (activity) {
+      case 'Đi bộ':
+        return Icons.directions_walk;
+      case 'Chạy':
+        return Icons.directions_run;
+      case 'Lên cầu thang':
+        return Icons.stairs;
+      case 'Xuống cầu thang':
+        return Icons.arrow_downward;
+      case 'Ngồi':
+        return Icons.chair;
+      case 'Đứng':
+        return Icons.accessibility_new;
+      default:
+        return Icons.help_outline;
+    }
   }
 
   Widget _buildFeatureCard(
@@ -382,89 +628,5 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       ),
     );
-  }
-
-  void _showSeedDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('🌱 Force Seed Data'),
-        content: const Text(
-          'Bạn có muốn tạo lại dữ liệu mẫu?\n\n'
-          'Lưu ý: Điều này sẽ thêm thêm dữ liệu mới, không xóa dữ liệu cũ.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Hủy'),
-          ),
-          TextButton(
-            onPressed: () async {
-              Navigator.pop(context);
-              if (!mounted) return;
-
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('🌱 Chức năng đang được phát triển'),
-                  duration: Duration(seconds: 2),
-                ),
-              );
-
-              // TODO: Implement seed function
-              // await SeedService.forceSeed(days: 7);
-            },
-            child: const Text('Tạo'),
-          ),
-          TextButton(
-            onPressed: () async {
-              Navigator.pop(context);
-              final confirm = await showDialog<bool>(
-                context: context,
-                builder: (context) => AlertDialog(
-                  title: const Text('⚠️ Xác nhận xóa'),
-                  content: const Text(
-                    'Bạn có chắc muốn xóa TOÀN BỘ dữ liệu và tạo lại?',
-                  ),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(context, false),
-                      child: const Text('Hủy'),
-                    ),
-                    TextButton(
-                      onPressed: () => Navigator.pop(context, true),
-                      style: TextButton.styleFrom(foregroundColor: Colors.red),
-                      child: const Text('Xóa & Tạo lại'),
-                    ),
-                  ],
-                ),
-              );
-
-              if (confirm == true) {
-                if (!mounted) return;
-
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('🗑️ Chức năng đang được phát triển'),
-                    duration: Duration(seconds: 2),
-                  ),
-                );
-
-                // TODO: Implement clear and seed function
-                // await SeedService.clearAllAndReset();
-                // await SeedService.forceSeed(days: 7);
-              }
-            },
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('Xóa & Tạo lại'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  @override
-  void dispose() {
-    _imuService.dispose();
-    super.dispose();
   }
 }

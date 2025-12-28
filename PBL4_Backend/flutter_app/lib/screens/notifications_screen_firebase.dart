@@ -1,13 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 
 class NotificationsScreenFirebase extends StatelessWidget {
   const NotificationsScreenFirebase({super.key});
 
   Stream<QuerySnapshot> _getNotificationsStream() {
-    final userId = FirebaseAuth.instance.currentUser?.uid;
-    if (userId == null) return const Stream.empty();
+    const userId = 'user1'; // Sử dụng user_id mặc định từ backend
 
     return FirebaseFirestore.instance
         .collection('notifications')
@@ -63,8 +61,24 @@ class NotificationsScreenFirebase extends StatelessWidget {
               final title = data['title'] ?? 'Thông báo';
               final message = data['message'] ?? '';
               final isRead = data['is_read'] ?? false;
-              final notificationType = data['notification_type'] ?? 'info';
+              final type = data['type'] ?? 'info';
+              final durationMinutes = data['duration_minutes'] ?? 0;
               final createdAt = (data['created_at'] as Timestamp?)?.toDate();
+
+              // Determine icon and color based on type
+              IconData icon;
+              Color iconColor;
+              Color bgColor;
+
+              if (type == 'sitting_alert') {
+                icon = Icons.event_seat;
+                iconColor = Colors.orange;
+                bgColor = isRead ? Colors.white : Colors.orange.shade50;
+              } else {
+                icon = Icons.notifications_active;
+                iconColor = isRead ? Colors.grey : Colors.red;
+                bgColor = isRead ? Colors.white : Colors.blue.shade50;
+              }
 
               String timeAgo = 'Vừa xong';
               if (createdAt != null) {
@@ -81,7 +95,7 @@ class NotificationsScreenFirebase extends StatelessWidget {
               return Card(
                 margin: const EdgeInsets.only(bottom: 12),
                 elevation: 2,
-                color: isRead ? Colors.white : Colors.blue.shade50,
+                color: bgColor,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
@@ -103,12 +117,12 @@ class NotificationsScreenFirebase extends StatelessWidget {
                           decoration: BoxDecoration(
                             color: isRead
                                 ? Colors.grey.shade200
-                                : Colors.red.shade100,
+                                : iconColor.withOpacity(0.2),
                             borderRadius: BorderRadius.circular(25),
                           ),
                           child: Icon(
-                            Icons.notifications_active,
-                            color: isRead ? Colors.grey : Colors.red,
+                            icon,
+                            color: iconColor,
                             size: 28,
                           ),
                         ),

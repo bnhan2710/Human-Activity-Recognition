@@ -14,8 +14,10 @@ from predictor import ActivityPredictor
 from firebase_handler import FirebaseHandler
 from data_buffer import DataBuffer
 
-# Load environment variables
-load_dotenv()
+# Load environment variables with explicit path
+import pathlib
+env_path = pathlib.Path(__file__).parent / '.env'
+load_dotenv(dotenv_path=env_path)
 
 # Configure logging
 logging.basicConfig(
@@ -138,6 +140,11 @@ async def startup_event():
     try:
         database_url = os.getenv("FIREBASE_DATABASE_URL")
         service_account_path = os.getenv("FIREBASE_SERVICE_ACCOUNT_PATH")
+        
+        # Debug: Print what we got from .env
+        logger.info("🔍 Debug - Environment variables:")
+        logger.info(f"   FIREBASE_DATABASE_URL: {database_url}")
+        logger.info(f"   FIREBASE_SERVICE_ACCOUNT_PATH: {service_account_path}")
         
         if database_url and service_account_path:
             logger.info("📡 Initializing Firebase from .env config...")
@@ -581,6 +588,23 @@ def handle_firebase_data(data: dict, config: FirebaseConfig = None):
             window = data_buffer.get_window()
             logger.info(f"   📐 Kích thước cửa sổ dự đoán: {window.shape}")
             
+            # ====== TÍNH THỜI GIAN BẮT ĐẦU VÀ KẾT THÚC ======
+            buffer_data = list(data_buffer.buffer)
+            window_samples = buffer_data[-data_buffer.window_size:]  # Last window_size samples
+            
+            if window_samples and 'timestamp' in window_samples[0]:
+                start_timestamp_ms = window_samples[0]['timestamp']
+                start_time = datetime.fromtimestamp(start_timestamp_ms / 1000.0)
+                end_timestamp_ms = window_samples[-1]['timestamp']
+                end_time = datetime.fromtimestamp(end_timestamp_ms / 1000.0)
+                duration_seconds = (end_timestamp_ms - start_timestamp_ms) / 1000.0
+            else:
+                end_time = datetime.now()
+                duration_seconds = data_buffer.window_size / 20.0
+                start_time = end_time - pd.Timedelta(seconds=duration_seconds)
+            
+            logger.info(f"   ⏰ Thời gian: {start_time.strftime('%H:%M:%S')} → {end_time.strftime('%H:%M:%S')} ({duration_seconds:.2f}s)")
+            
             # ====== IN RA SAMPLES DÙNG ĐỂ DỰ ĐOÁN ======
             logger.info("   📋 SAMPLES DÙNG ĐỂ DỰ ĐOÁN:")
             logger.info("   " + "-"*76)
@@ -663,7 +687,10 @@ def handle_firebase_data(data: dict, config: FirebaseConfig = None):
                         confidence=float(confidence),
                         probabilities=probabilities,
                         user_id=user_id,
-                        collection=collection
+                        collection=collection,
+                        start_time=start_time,
+                        end_time=end_time,
+                        duration_seconds=duration_seconds
                     )
                     
                     prediction_count += 1
